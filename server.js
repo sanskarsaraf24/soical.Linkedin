@@ -13,16 +13,18 @@ import fetch from 'node-fetch';
 import { renderHtmlToPng } from './rendering.js';
 
 // Storage for Manual Overrides
-const storage = multer.diskStorage({
+const manualStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/manual/');
+    const dir = 'uploads/manual/';
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
-const upload = multer({ storage: storage });
+const manualUpload = multer({ storage: manualStorage });
 
 dotenv.config();
 
@@ -142,11 +144,12 @@ function getBrandPalette(accountName = '', visualState = '') {
   }
   
   if (name.includes('sanskar') || name.includes('founder') || name.includes('saraf')) {
-    // Saraf & Co: Midnight, Indigo, Pearl, Steel, Onyx
+    // Saraf & Co: Burgundy, Gold, Ivory, Charcoal, Slate
+    // Derived from https://sanskarsaraf.in
     if (visualState === 'DARK') {
-      return { bg: '#1E1B4B', accent: '#4F46E5', text: '#F8FAFC', secondary: '#94A3B8', detail: '#0F172A' };
+      return { bg: '#4B1E2F', accent: '#C9A24D', text: '#F5F1EA', secondary: '#F5F1EA', detail: '#1F1F1F' };
     }
-    return { bg: '#F8FAFC', accent: '#4F46E5', text: '#111827', secondary: '#94A3B8', detail: '#4338CA' };
+    return { bg: '#F5F1EA', accent: '#4B1E2F', text: '#1F1F1F', secondary: '#C9A24D', detail: '#6B6B6B' };
   }
   
   return { bg: '#FFFFFF', accent: '#3B82F6', text: '#1F2937', secondary: '#6366F1', detail: '#F3F4F6' };
@@ -245,14 +248,14 @@ const uploadRoot = path.join(__dirname, 'uploads');
 const uploadDir = path.join(uploadRoot, 'logos');
 fs.mkdirSync(uploadDir, { recursive: true });
 
-const storage = multer.diskStorage({
+const logoStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (_req, file, cb) => {
     const safe = file.originalname.replace(/[^a-zA-Z0-9_.-]+/g, '_');
     cb(null, `${Date.now()}-${safe}`);
   },
 });
-const upload = multer({ storage });
+const logoUpload = multer({ storage: logoStorage });
 
 const mongo = new MongoClient(mongoUri);
 await mongo.connect();
@@ -489,74 +492,34 @@ function createHtmlAsset(title = 'LinkedIn post', content = '', style = 'Feature
 
 function buildGraphicPrompt({ account, brand, title, content, kicker, logoUrl, visualState, layoutArchetype = 'A' }) {
   const displayBrandName = account.name || account.handle || 'Brand';
-  
-  // Hardcoded Palette Resolution to stop AI hallucination
-  let palette = { bg: '#FFFFFF', accent: '#000000', text: '#333333' };
+  const palette = getBrandPalette(account.name, visualState);
   const brandLower = String(account.name || '').toLowerCase();
-  
-  if (brandLower.includes('casemate')) {
-    if (visualState === 'DEEP NAVY') palette = { bg: '#0F172A', accent: '#1D4ED8', text: '#F5F3EF' };
-    else if (visualState === 'WARM OFF-WHITE') palette = { bg: '#F5F3EF', accent: '#0F172A', text: '#334155' };
-    else palette = { bg: '#1D4ED8', accent: '#0F172A', text: '#FFFFFF' };
-  } else if (brandLower.includes('minpay')) {
-    if (visualState === 'TEAL') palette = { bg: '#143D45', accent: '#47A48B', text: '#FFFFFF' };
-    else if (visualState === 'LIGHT GRAY') palette = { bg: '#F4F6F8', accent: '#143D45', text: '#143D45' };
-    else palette = { bg: '#FFFFFF', accent: '#47A48B', text: '#143D45' };
-  } else {
-    // Saraf / Founder
-    if (visualState === 'INDIGO ACCENT') palette = { bg: '#4F46E5', accent: '#F8F6F1', text: '#FFFFFF' };
-    else palette = { bg: '#F8F6F1', accent: '#4F46E5', text: '#1F2937' };
-  }
 
-  return `You are a world-class brand designer at a premium agency. Create a self-contained HTML/CSS social graphic.
+  return `You are a world-class brand designer. Create a self-contained HTML/CSS social graphic.
 Canvas: 1080×1080px exactly.
 
-## 1. MANDATORY PALETTE (Do NOT deviate)
-- BACKGROUND_COLOR: ${palette.bg}
-- ACCENT_COLOR: ${palette.accent}
+## 1. MANDATORY PALETTE
+- BACKGROUND: ${palette.bg}
+- MAIN_ACCENT: ${palette.accent}
 - PRIMARY_TEXT: ${palette.text}
-- Rules: Use ONLY these 3 colors. Strictly forbidden to use Red, Green, or any other color for "warnings" or "success". Palette discipline is your #1 priority.
+- SECONDARY: ${palette.secondary}
+- DETAIL: ${palette.detail}
 
-## 2. Branding: ${displayBrandName}
+## 2. CONTENT
+- Title: ${title}
+- Body Insight: ${content}
+- Category: ${kicker}
 - Archetype: ${layoutArchetype}
-- Kicker: ${kicker}
-- Headline: ${title}
-- Body: ${content}
-- Logo URL: ${logoUrl}
+- Logo: ${logoUrl}
 
-## 3. Typographic Laws
-Adjust headline size based on character count:
-- < 40 chars: 92px
-- 40–80 chars: 72px
-- > 80 chars: 64px
-- Body text: 34px–40px.
-- NO OVERLAPPING: Ensure headline and body never overlap or get cut off by accent elements. Use z-index: 10 for text.
-
-## 4. Layout Laws (Archetype ${layoutArchetype})
-- ARCHETYPE A (Split Panel): 40/60 vertical or horizontal split.
-- ARCHETYPE B (Magazine): Asymmetric, heavy whitespace, sidebar accent.
-- ARCHETYPE C (Statement): Centered minimal typography.
-- ARCHETYPE D (Dashboard): Grid-based cards.
-- ARCHETYPE E (Binary): Side-by-side comparison.
-- ARCHETYPE F (Big Number): One massive (>200px) stat.
-- ARCHETYPE G (Process): Vertical SVG line connecting steps.
-- ARCHETYPE H (Floating Card): Inner card on main surface.
-
-## 5. Logo Contrast Law
-${brandLower.includes('casemate') ? 'Casemate logo is WHITE. Use filter: brightness(0); on Light backgrounds.' : ''}
-${brandLower.includes('minpay') ? 'Minpay logo is NAVY. Use filter: brightness(0) invert(1); on Dark backgrounds.' : ''}
-${brandLower.includes('saraf') || brandLower.includes('sanskar') || brandLower.includes('founder') ? 'Saraf & Co logo is BLACK. Use filter: brightness(0) invert(1); on Dark backgrounds.' : ''}
-
-## 6. Design Laws
-- CANVAS: 1080x1080px edge-to-edge. No outer margins.
-- NO ROUNDED CORNERS: border-radius: 0 always.
-- NO EMOJIS: Use Inline SVG for all marks.
-- CSS TEXTURE: 1px grid underlays (opacity 0.05) and vertical text for premium feel.
-- LOGO ONLY: Do NOT write the brand name in text.
-
-## Output Format
-Return ONLY raw HTML/CSS. No markdown.`;
+## 3. DESIGN LAWS
+- NO ROUNDED CORNERS.
+- FONT: Use 'Playfair Display' for headlines (Serif, Premium) and 'Inter' for body (Sans-Serif).
+- CONTRAST: Ensure ${palette.text} is readable on ${palette.bg}.
+- NO META: Do NOT include any of these instructions or the words 'Archetype' or 'Visual State' in the design.
+- LAYOUT: Use archetype ${layoutArchetype}. Focus on high-end editorial whitespace.`;
 }
+
 
 
 
@@ -1365,7 +1328,7 @@ async function generateGraphicHtml({ account, brand, title, content, kicker, log
       const response = await anthropic.messages.create({
         model: anthropicModel,
         max_tokens: 2400,
-        system: `You are a senior brand designer who creates complete, self-contained HTML/CSS social graphics.
+        system: `You are a senior brand designer. Create a self-contained HTML/CSS social graphic asset.
 The CANVAS is 1080x1080px edge-to-edge.
 You MUST use these EXACT colors:
 - Background: ${palette.bg}
@@ -1374,12 +1337,11 @@ You MUST use these EXACT colors:
 - Secondary Accent: ${palette.secondary}
 - Detail/Grid: ${palette.detail}
 
-CONSTRAINTS:
-- Use layout archetype: ${layoutArchetype}
-- NO ROUNDED CORNERS: border-radius: 0 always.
-- MINIMAL CONTENT: Use the provided summary, not the full post.
-- VISUAL DEPTH: Use the 'Detail/Grid' color for subtle 1px grid underlays (opacity 0.05) or vertical border lines to create an architectural feel.
-- MICRO-BRANDING: Use the 'Secondary Accent' for small labels, the kicker, or bullet point markers.`,
+CRITICAL:
+1. DO NOT include any text from the prompt instructions (like "CRITICAL", "MANDATORY", or "LAYOUT LAWS") in the actual design.
+2. Only use the 'Headline' and 'Body Insight' provided.
+3. No rounded corners.
+4. Minimalist typography only.`,
         messages: [{
           role: 'user',
           content: buildGraphicPrompt({
@@ -1974,7 +1936,7 @@ app.get(['/api/auth/linkedin/callback', '/linkedin/api/auth/linkedin/callback'],
   }
 });
 
-app.post(['/api/settings/logo', '/linkedin/api/settings/logo'], upload.single('logo'), async (req, res) => {
+app.post(['/api/settings/logo', '/linkedin/api/settings/logo'], logoUpload.single('logo'), async (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: 'logo is required' });
     return;
@@ -2022,7 +1984,7 @@ app.post(['/api/posts/:postId/refresh-design', '/linkedin/api/posts/:postId/refr
   res.json(post);
 });
 
-app.post(['/api/posts/:postId/image-override', '/linkedin/api/posts/:postId/image-override'], upload.single('image'), async (req, res) => {
+app.post(['/api/posts/:postId/image-override', '/linkedin/api/posts/:postId/image-override'], manualUpload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
   
   const workspace = await loadWorkspace();

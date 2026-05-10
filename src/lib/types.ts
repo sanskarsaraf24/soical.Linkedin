@@ -117,6 +117,9 @@ export interface PostDraft {
   generatedAt?: string;
   scheduleSlotKey?: string;
   generationSource?: string;
+  imageOverrideUrl?: string;
+  layoutArchetype?: string;
+  visualState?: string;
 }
 
 export interface WorkspaceState {
