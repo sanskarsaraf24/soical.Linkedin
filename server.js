@@ -23,6 +23,18 @@ const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
 const dbName = process.env.MONGODB_DB || 'linkedin_ai';
 const groqKey = process.env.GROQ_API_KEY;
 const anthropicKey = process.env.ANTHROPIC_API_KEY;
+
+let generationTracker = new Map();
+function getAndIncGenerationOffset(accountId) {
+  const now = Date.now();
+  const entry = generationTracker.get(accountId) || { count: 0, lastAt: now };
+  if (now - entry.lastAt > 120000) entry.count = 0;
+  const offset = entry.count;
+  entry.count += 1;
+  entry.lastAt = now;
+  generationTracker.set(accountId, entry);
+  return offset;
+}
 const canonicalRedirectUri = 'https://social.minpay.in/linkedin/api/auth/linkedin/callback';
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://social.minpay.in';
 function normalizeLinkedInApiVersion(value) {
@@ -76,9 +88,48 @@ function pickLayoutArchetype(index = 0) {
   return LAYOUT_ARCHETYPES[index % LAYOUT_ARCHETYPES.length];
 }
 
-function getNextLayoutArchetypeForAccount(workspace, accountId) {
-  const count = (workspace.posts || []).filter(post => post.accountId === accountId).length;
-  return pickLayoutArchetype(count);
+function getNextLayoutArchetypeForAccount(workspace, accountId, offset = 0) {
+  const recentPosts = (workspace.posts || [])
+    .filter(p => p.accountId === accountId && p.status !== 'failed')
+    .sort((a, b) => new Date(b.scheduledAt || 0).getTime() - new Date(a.scheduledAt || 0).getTime())
+    .slice(0, 3);
+  
+  const usedArchetypes = recentPosts.map(p => p.layoutArchetype).filter(Boolean);
+  const archetypes = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+  
+  let candidateIndex = ((workspace.posts || []).filter(p => p.accountId === accountId).length + offset) % archetypes.length;
+  let layout = archetypes[candidateIndex];
+  
+  let attempts = 0;
+  while (usedArchetypes.includes(layout) && attempts < archetypes.length) {
+    candidateIndex = (candidateIndex + 1) % archetypes.length;
+    layout = archetypes[candidateIndex];
+    attempts++;
+  }
+  
+  return layout;
+}
+
+function getNextVisualStateForAccount(workspace, account, brand, offset = 0) {
+  const accountId = account.id;
+  const recentPosts = (workspace.posts || [])
+    .filter(p => p.accountId === accountId && p.status !== 'failed')
+    .sort((a, b) => new Date(b.scheduledAt || 0).getTime() - new Date(a.scheduledAt || 0).getTime())
+    .slice(0, 1);
+  
+  const lastState = recentPosts[0]?.visualState;
+  const name = String(account.name || account.handle || '').toLowerCase();
+  
+  let states = ['A', 'B'];
+  if (name.includes('casemate')) states = ['DEEP NAVY', 'WARM OFF-WHITE', 'ROYAL BLUE'];
+  else if (name.includes('minpay')) states = ['WHITE', 'TEAL', 'LIGHT GRAY'];
+  else if (name.includes('sanskar') || name.includes('founder')) states = ['OFF-WHITE', 'INDIGO ACCENT'];
+
+  let currentIndex = states.indexOf(lastState);
+  if (currentIndex === -1) currentIndex = (workspace.posts || []).filter(p => p.accountId === accountId).length + offset;
+  
+  const nextIndex = (currentIndex + 1) % states.length;
+  return states[nextIndex];
 }
 
 function isCasemateAccount(account = {}) {
@@ -386,84 +437,78 @@ function createHtmlAsset(title = 'LinkedIn post', content = '', style = 'Feature
 </html>`;
 }
 
-function buildGraphicPrompt({ account, brand, title, content, kicker, logoUrl, visualDirection, visualState, layoutArchetype = 'A' }) {
-  const displayBrandName = brand.brandName || account.name;
-  const captionLine = String(content || '').split('\n').find(Boolean)?.slice(0, 160) || '';
-  const archetype = normalizeLayoutArchetype(layoutArchetype);
-  const layoutBrief = getGraphicArchetypeBrief({ account, layoutArchetype: archetype });
+function buildGraphicPrompt({ account, brand, title, content, kicker, logoUrl, visualState, layoutArchetype = 'A' }) {
+  const displayBrandName = account.name || account.handle || 'Brand';
+  
+  // Hardcoded Palette Resolution to stop AI hallucination
+  let palette = { bg: '#FFFFFF', accent: '#000000', text: '#333333' };
+  const brandLower = String(account.name || '').toLowerCase();
+  
+  if (brandLower.includes('casemate')) {
+    if (visualState === 'DEEP NAVY') palette = { bg: '#0F172A', accent: '#1D4ED8', text: '#F5F3EF' };
+    else if (visualState === 'WARM OFF-WHITE') palette = { bg: '#F5F3EF', accent: '#0F172A', text: '#334155' };
+    else palette = { bg: '#1D4ED8', accent: '#0F172A', text: '#FFFFFF' };
+  } else if (brandLower.includes('minpay')) {
+    if (visualState === 'TEAL') palette = { bg: '#143D45', accent: '#47A48B', text: '#FFFFFF' };
+    else if (visualState === 'LIGHT GRAY') palette = { bg: '#F4F6F8', accent: '#143D45', text: '#143D45' };
+    else palette = { bg: '#FFFFFF', accent: '#47A48B', text: '#143D45' };
+  } else {
+    // Saraf / Founder
+    if (visualState === 'INDIGO ACCENT') palette = { bg: '#4F46E5', accent: '#F8F6F1', text: '#FFFFFF' };
+    else palette = { bg: '#F8F6F1', accent: '#4F46E5', text: '#1F2937' };
+  }
 
-  return `You are a senior brand designer and frontend engineer. Create a premium LinkedIn square graphic (1080x1080px) as a single self-contained HTML document.
+  return `You are a world-class brand designer at a premium agency. Create a self-contained HTML/CSS social graphic.
+Canvas: 1080×1080px exactly.
 
-## Primary Rule
-The Brand Identity & Design System below is the source of truth. Do not impose a generic SaaS, startup, gradient, or editorial style if the brand guide says otherwise.
+## 1. MANDATORY PALETTE (Do NOT deviate)
+- BACKGROUND_COLOR: ${palette.bg}
+- ACCENT_COLOR: ${palette.accent}
+- PRIMARY_TEXT: ${palette.text}
+- Rules: Use ONLY these 3 colors. Strictly forbidden to use Red, Green, or any other color for "warnings" or "success". Palette discipline is your #1 priority.
 
-## Brand Identity & Design System
-Read this design guide and derive the core visual identity (colors, fonts).
----
-${brand.imageStyle || 'Clean, premium editorial. Minimal with strong typographic hierarchy. Neutral palette.'}
----
+## 2. Branding: ${displayBrandName}
+- Archetype: ${layoutArchetype}
+- Kicker: ${kicker}
+- Headline: ${title}
+- Body: ${content}
+- Logo URL: ${logoUrl}
 
-## SPECIFIC VISUAL STATE (MANDATORY)
-You MUST use the visual state: **${visualState || 'A'}**
-If the Brand Guide defines multiple states (like A, B, C or Navy, Off-White, Royal), you MUST strictly implement the one assigned above.
-For example, if the state is "WARM OFF-WHITE", your background MUST be off-white and your typography must be dark navy/black.
+## 3. Typographic Laws
+Adjust headline size based on character count:
+- < 40 chars: 92px
+- 40–80 chars: 72px
+- > 80 chars: 64px
+- Body text: 34px–40px.
+- NO OVERLAPPING: Ensure headline and body never overlap or get cut off by accent elements. Use z-index: 10 for text.
 
-## LAYOUT
-Use the layout direction from the brand guide or strategy.
-Layout archetype: **${archetype}**
-Archetype brief: ${layoutBrief}
-Direction: ${visualDirection || 'Choose a layout that fits the brand guide and the content.'}
+## 4. Layout Laws (Archetype ${layoutArchetype})
+- ARCHETYPE A (Split Panel): 40/60 vertical or horizontal split.
+- ARCHETYPE B (Magazine): Asymmetric, heavy whitespace, sidebar accent.
+- ARCHETYPE C (Statement): Centered minimal typography.
+- ARCHETYPE D (Dashboard): Grid-based cards.
+- ARCHETYPE E (Binary): Side-by-side comparison.
+- ARCHETYPE F (Big Number): One massive (>200px) stat.
+- ARCHETYPE G (Process): Vertical SVG line connecting steps.
+- ARCHETYPE H (Floating Card): Inner card on main surface.
 
-## DESIGN TOKENS (Recommended Baseline)
-* { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
-html, body { width: 1080px; height: 1080px; margin: 0; padding: 0; overflow: hidden; }
-body { padding: 100px; display: flex; flex-direction: column; justify-content: space-between; }
+## 5. Logo Contrast Law
+${brandLower.includes('casemate') ? 'Casemate logo is WHITE. Use filter: brightness(0); on Light backgrounds.' : ''}
+${brandLower.includes('minpay') ? 'Minpay logo is NAVY. Use filter: brightness(0) invert(1); on Dark backgrounds.' : ''}
+${brandLower.includes('saraf') || brandLower.includes('sanskar') || brandLower.includes('founder') ? 'Saraf & Co logo is BLACK. Use filter: brightness(0) invert(1); on Dark backgrounds.' : ''}
 
-/* TYPOGRAPHY SYSTEM - NO TEXT BELOW 32PX ALLOWED */
-h1 {
-  font-size: clamp(64px, 7vw, 92px) !important;
-  line-height: 1.06 !important;
-  letter-spacing: 0 !important;
-  font-weight: 700 !important;
-  margin: 0 0 40px 0;
+## 6. Design Laws
+- CANVAS: 1080x1080px edge-to-edge. No outer margins.
+- NO ROUNDED CORNERS: border-radius: 0 always.
+- NO EMOJIS: Use Inline SVG for all marks.
+- CSS TEXTURE: 1px grid underlays (opacity 0.05) and vertical text for premium feel.
+- LOGO ONLY: Do NOT write the brand name in text.
+
+## Output Format
+Return ONLY raw HTML/CSS. No markdown.`;
 }
-.supporting-text {
-  font-size: 38px !important;
-  line-height: 1.4 !important;
-  font-weight: 400 !important;
-}
-.kicker {
-  font-size: 32px !important;
-  text-transform: uppercase !important;
-  letter-spacing: 4px !important;
-  font-weight: 700 !important;
-  margin-bottom: 30px;
-}
 
-/* BRANDING */
-.logo { height: 100px; width: auto; object-fit: contain; margin-bottom: 20px; }
 
-## LOGO & BRANDING RULES (CRITICAL)
-1. LOGO IMAGE: ${logoUrl}
-2. ABSOLUTELY NO TEXT BRANDING: Do NOT output the text "${displayBrandName}" or any taglines in the HTML. The logo image ALREADY contains the brand name. Adding text creates ugly duplicates.
-3. LOGO PLACEMENT: Place the logo ONCE.
-4. CONTRAST: Use \`filter: brightness(0) invert(1);\` on the .logo if the background is dark.
-
-## CONTENT TO RENDER
-- KICKER: "${kicker || ''}"
-- HEADLINE: "${title}"
-- SUB-HEADLINE: "${captionLine}"
-
-## OUTPUT REQUIREMENTS
-- No markdown, no fences.
-- All text MUST be 32px or larger.
-- Use the fonts specified in the brand guide. If none are specified, use Google Fonts: Playfair Display for headings and Inter for body.
-- Do not use decorative gradient backgrounds unless the brand guide explicitly asks for them.
-- Keep the design inside the 1080x1080 canvas with generous margins. Do not crop the logo or text.
-- Do not reuse the same visual framing across consecutive posts; respect the assigned archetype.
-- Add data-required="headline" to the h1 and data-required="subheadline" to the supporting sentence.
-- Output only valid complete HTML/CSS from <!doctype html>.`;
-}
 
 function buildStrategyPrompt({ account, brand, slots = [] }) {
   const daysMap = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -483,6 +528,10 @@ function buildStrategyPrompt({ account, brand, slots = [] }) {
 
 ## Market Context
 The account is based in India and writes for an India-based audience. Use this as business context, but only mention India-specific laws, frameworks, currency formats, or terminology when the brand profile or topic makes it relevant.
+
+## Historical Awareness (Anti-Repetition)
+The following topics have been covered RECENTLY. Do NOT repeat these angles or subjects:
+${(workspace.posts || []).slice(-10).map(p => `- ${p.title}`).join('\n')}
 
 ## Strategy Mission
 Analyze the brand profile and current LinkedIn ecosystem. Brainstorm a high-performance weekly plan.
@@ -1197,6 +1246,50 @@ function normalizeGraphicHtml(html = '') {
     .replace(/height="1200"/g, 'height="1080"');
 }
 
+function applyLogoContrastCorrection(html, account, visualState, postTitle = '') {
+  const brandName = String(account.name || '').toLowerCase();
+  let filter = '';
+  let colorCorrection = '';
+
+  // Supreme Design Engine Enforcement
+  if (brandName.includes('casemate')) {
+    colorCorrection = `
+      body, .background, [style*="background"] { background-color: #0F172A !important; background-image: none !important; }
+      .accent, .divider, [style*="background-color: #800000"], [style*="background-color: red"] { background-color: #1D4ED8 !important; }
+      h1, p, span, div { z-index: 10 !important; position: relative !important; }
+    `;
+    if (visualState === 'WARM OFF-WHITE') {
+      filter = 'brightness(0)';
+      colorCorrection = `
+        body, .background { background-color: #F5F3EF !important; }
+        h1, p { color: #334155 !important; }
+      `;
+    }
+  } else if (brandName.includes('minpay')) {
+    colorCorrection = `
+      body, .background, [style*="background"] { background-color: #143D45 !important; }
+      .sidebar, .accent, [style*="background-color: red"] { background-color: #47A48B !important; }
+      h1, p { color: #FFFFFF !important; z-index: 10 !important; position: relative !important; }
+    `;
+  } else if (brandName.includes('saraf') || brandName.includes('founder')) {
+    if (visualState === 'INDIGO ACCENT') {
+      filter = 'brightness(0) invert(1)';
+    }
+  }
+
+  const styleInject = `
+<style>
+  ${colorCorrection}
+  .logo, img[src*="logo"], .brand-logo { filter: ${filter} !important; }
+  * { border-radius: 0 !important; }
+</style>
+`;
+
+  if (html.includes('</head>')) return html.replace('</head>', `${styleInject}</head>`);
+  if (html.includes('<body>')) return html.replace('<body>', `<head>${styleInject}</head><body>`);
+  return html + styleInject;
+}
+
 function hasVisiblePosterText(html = '') {
   const withoutCode = String(html || '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
@@ -1213,6 +1306,7 @@ function hasVisiblePosterText(html = '') {
 }
 
 async function generateGraphicHtml({ account, brand, title, content, kicker, logoUrl, layoutArchetype = 'A' }) {
+  const visualState = brand.visualState || 'A';
   if (anthropic) {
     try {
       const response = await anthropic.messages.create({
@@ -1228,13 +1322,14 @@ async function generateGraphicHtml({ account, brand, title, content, kicker, log
             content,
             kicker,
             logoUrl,
-            visualDirection: brand.visualDirection,
-            visualState: brand.visualState,
+            visualState,
             layoutArchetype,
           }),
         }],
       });
-      const html = normalizeGraphicHtml(response.content?.[0]?.text || '');
+      let html = normalizeGraphicHtml(response.content?.[0]?.text || '');
+      html = applyLogoContrastCorrection(html, account, visualState);
+      
       if ((html.includes('<html') || html.includes('<!doctype html')) && hasVisiblePosterText(html)) {
         return html;
       }
@@ -1317,6 +1412,7 @@ async function createScheduledPostForTomorrow({ workspace, account, brand, targe
   const targetDay = getZonedParts(new Date(scheduledAt), timeZone);
   const strategyItem = (brand.weeklyStrategy || []).find(s => s.day === targetDay.weekdayName);
   const layoutArchetype = normalizeLayoutArchetype(strategyItem?.layoutArchetype || getNextLayoutArchetypeForAccount(workspace, account.id));
+  const visualState = strategyItem?.visualState || getNextVisualStateForAccount(workspace, account, brand);
 
   const prompt = buildGenerationPrompt({ account, brand, targetDate, targetTime, strategyItem });
   const { content, title } = await generatePostContent({ account, brand, prompt });
@@ -1329,7 +1425,7 @@ async function createScheduledPostForTomorrow({ workspace, account, brand, targe
     brand: {
       ...brand,
       visualDirection: strategyItem?.visualDirection,
-      visualState: strategyItem?.visualState
+      visualState: visualState
     },
     title,
     content,
@@ -1672,6 +1768,18 @@ app.get('/linkedin/api/health', (_req, res) => {
 
 app.get(['/api/workspace', '/linkedin/api/workspace'], async (_req, res) => {
   const workspace = await loadWorkspace();
+  
+  // Retroactive Hot-Fix: Apply Supreme Design Laws to all existing posts on-the-fly
+  if (workspace.posts) {
+    workspace.posts = workspace.posts.map(post => {
+      const account = workspace.accounts.find(a => a.id === post.accountId);
+      if (account && post.htmlAsset) {
+        post.htmlAsset = applyLogoContrastCorrection(post.htmlAsset, account, post.visualState || 'A', post.title);
+      }
+      return post;
+    });
+  }
+
   res.json(sanitizeWorkspaceForClient(workspace));
 });
 
@@ -1863,7 +1971,9 @@ app.post(['/api/generate-post', '/linkedin/api/generate-post'], async (req, res)
 
   const postTheme = brand.contentThemes?.[0] || brand.contentPillars?.[0] || 'general';
   const kicker = postTheme.charAt(0).toUpperCase() + postTheme.slice(1);
-  const layoutArchetype = getNextLayoutArchetypeForAccount(workspace, accountId);
+  const offset = getAndIncGenerationOffset(accountId);
+  const layoutArchetype = getNextLayoutArchetypeForAccount(workspace, accountId, offset);
+  const visualState = getNextVisualStateForAccount(workspace, account, brand, offset);
   const post = {
     id: `post_${Date.now()}`,
     accountId,
@@ -1874,7 +1984,7 @@ app.post(['/api/generate-post', '/linkedin/api/generate-post'], async (req, res)
     hashtags: brand.hashtags || [],
     htmlAsset: await generateGraphicHtml({
       account,
-      brand,
+      brand: { ...brand, visualState },
       title: generated.title,
       content: generated.content,
       kicker,

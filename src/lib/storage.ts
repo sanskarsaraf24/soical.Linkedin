@@ -5,30 +5,125 @@ export const canonicalLinkedInRedirectUri = 'https://social.minpay.in/linkedin/a
 
 const now = new Date();
 
-const minpayImageStyle = [
-  'MinPay Consultants LLP brand kit. Colors: Deep Teal #143D45 as the primary brand color, Mint Teal #47A48B as the accent/checkmark color, White #FFFFFF, Cool Light Gray #F4F6F8, and Charcoal Gray #4A4A4A for secondary text.',
-  'Typography: Montserrat Bold for headlines, labels, and key numbers; Roboto Regular for body/supporting text. Use clean, confident, professional spacing with no decorative gradients.',
-  'Visual language: calm debt-resolution and consultation brand, not a loan app and not generic SaaS. Use white or light-gray backgrounds, deep-teal panels, mint accents, clean dividers, document/checklist/process motifs, and subtle finance/legal-consultation cues.',
-  'Mood board direction: minimalist financial service posters, clean business-card style layouts, flat illustration only when useful, subtle office/document context, and strong trust signals through structure and restraint.',
-  'Layout states to rotate: Clean White, Light Gray, Deep Teal, Mint Accent. Keep the logo visible once, preferably top-left or bottom-right depending on contrast.',
-  'Avoid: navy/charcoal-heavy palettes not in the kit, emerald substitutes, purple/blue startup gradients, rounded pill-heavy UI, playful illustrations, fear-based debt imagery, stock-photo people, clutter, tiny text, and any promise of guaranteed settlement outcomes.'
-].join(' ');
+const minpayImageStyle = `
+## Visual Identity: Debt Resolution (Financial Services)
+Core colors: Deep Teal #143D45 (primary, trust), Mint Teal #47A48B (accent, success), White #FFFFFF, Cool Light Gray #F4F6F8
 
-const casemateImageStyle = [
-  'Casemate AI brand kit. Colors: Deep Navy #0F172A, Royal Blue #1D4ED8, Warm Off-White #F5F3EF, Slate Grey #334155, and Deep Emerald #065F46 only for success states.',
-  'Typography: Playfair Display for headlines, Inter for body, JetBrains Mono for citations or references. Keep the tone court-ready, precise, and disciplined.',
-  'Visual language: legal-tech, source-verified, structured, and institutional. Use squared layouts, thin borders, document-style panels, and calm whitespace.',
-  'Layout states to rotate: Citation Authority, Two-Column Brief, Vertical Authority, Grid Reference. Do not repeat the same framing every post.',
-  'Avoid: playful illustrations, startup gradients, rounded pill-heavy styling, stock imagery, neon accents, and generic AI branding.'
-].join(' ');
+## Typography System
+- Headlines: Montserrat Bold (82px default, scale down for length)
+- Body: Roboto Regular (35px)
+- Kicker: Montserrat Bold (30px, uppercase)
 
-const personalImageStyle = [
-  'Founder brand visual kit. Colors: Indigo #4F46E5, Off-White #F8F6F1, Charcoal #1F2937, Muted Grey #6B7280.',
-  'Typography: Manrope Bold for headlines, Inter for supporting text. Keep the voice crisp, practical, and reflective.',
-  'Visual language: editorial but restrained, with clear hierarchy, ample whitespace, subtle dividers, and no decorative clutter.',
-  'Layout states to rotate: Bold Left Headline, Magazine Spread, Quote Statement, Data Insight. Each post should feel distinct.',
-  'Avoid: gradients, noisy textures, rounded card-heavy design, and filler decoration.'
-].join(' ');
+## 8 Layout Archetypes (rotate through these—use a different one for each post)
+
+**ARCHETYPE A: Split Panel**
+Dual panel vertical/horizontal split. One side teal, one side white.
+
+**ARCHETYPE B: Sidebar Authority**
+25% teal sidebar with kicker, 75% white content area.
+
+**ARCHETYPE C: Focused Statement**
+Centered minimal card with a top 10px mint accent bar.
+
+**ARCHETYPE D: Data Dashboard**
+Grid-based layout for takeaways. Uses subtle 1px mint borders.
+
+**ARCHETYPE E: The Binary (Comparison)**
+50/50 split showing "Before vs After" or "Old Way vs New Way".
+
+**ARCHETYPE F: The Big Number (Stat Focus)**
+One massive center-stage mint teal number (e.g. "₹50k").
+
+**ARCHETYPE G: The Process (Vertical Journey)**
+A vertical mint line connecting 3–5 short resolution steps.
+
+**ARCHETYPE H: The Floating Takeaway**
+An inner "white card" summary floating on a light gray background.
+
+## Color Palette
+- Deep Teal #143D45, Mint Teal #47A48B, White #FFFFFF, Light Gray #F4F6F8.
+- No rounded corners. No gradients.
+`;
+
+const casemateImageStyle = `
+## Visual Identity: Legal Tech (Court-Ready)
+Core colors: Deep Navy #0F172A (primary), Royal Blue #1D4ED8 (secondary accents), Off-White #F5F3EF (surface), Slate Grey #334155 (body text)
+
+## Typography System
+- Headlines: Playfair Display Bold (80px default, serif)
+- Body: Inter Regular (34px, sans-serif)
+- Kicker: Inter Semibold (24px, uppercase)
+
+## 8 Layout Archetypes (rotate through these—use a different one for each post)
+
+**ARCHETYPE A: Split Panel**
+Deep Navy panel (40%) and Off-White panel (60%) split.
+
+**ARCHETYPE B: Two-Column Brief**
+Editorial layout with heavy whitespace and a navy sidebar accent.
+
+**ARCHETYPE C: Vertical Authority**
+Centered minimal statement with a navy bottom border (4px).
+
+**ARCHETYPE D: Grid Reference**
+3–4 boxes at the bottom representing categories or frameworks.
+
+**ARCHETYPE E: The Binary (Comparison)**
+Side-by-side legal "Old Way vs New Way" or "Manual vs AI".
+
+**ARCHETYPE F: The Big Number (Stat Focus)**
+Massive navy Playfair number highlighting reduction in drafting time or costs.
+
+**ARCHETYPE G: The Process (Vertical Journey)**
+A vertical navy line connecting the stages of a legal workflow.
+
+**ARCHETYPE H: The Floating Takeaway**
+A navy "inner card" for the TL;DR, floating on an off-white background.
+
+## Color Palette
+- Deep Navy #0F172A, Royal Blue #1D4ED8, Off-White #F5F3EF, Slate Grey #334155.
+- No rounded corners. Serif gravitas.
+`;
+
+const personalImageStyle = `
+## Visual Identity: Founder Brand
+Core colors: Indigo #4F46E5 (primary), Off-White #F8F6F1 (surface), Charcoal #1F2937 (headlines)
+
+## Typography System
+- Headlines: Manrope Bold (88px default)
+- Body: Inter Regular (36px)
+- Labels: Inter Semibold (22px, uppercase)
+
+## 8 Layout Archetypes (rotate through these—use a different one for each post)
+
+**ARCHETYPE A: Split Panel**
+Left indigo panel (30%), right off-white content (70%).
+
+**ARCHETYPE B: Magazine Spread**
+Asymmetric layout with indigo accents and heavy sidebar focus.
+
+**ARCHETYPE C: Quote/Statement**
+Centered statement with a signature 80px indigo divider.
+
+**ARCHETYPE D: Data/Insight Focus**
+Asymmetric with a grid of 2–3 metrics on the right.
+
+**ARCHETYPE E: The Binary (Comparison)**
+Contrast-heavy 50/50 split for "Then vs Now" founder lessons.
+
+**ARCHETYPE F: The Big Number (Stat Focus)**
+Massive indigo number highlighting a growth metric.
+
+**ARCHETYPE G: The Process (Vertical Journey)**
+A vertical indigo line connecting 3–5 roadmap or lesson steps.
+
+**ARCHETYPE H: The Floating Takeaway**
+An indigo "inner card" floating on off-white for the main lesson.
+
+## Color Palette
+- Indigo #4F46E5, Off-White #F8F6F1, Charcoal #1F2937.
+- Squared corners. Editorial/Premium feel.
+`;
 
 function isoDaysFromNow(days: number): string {
   const date = new Date(now);

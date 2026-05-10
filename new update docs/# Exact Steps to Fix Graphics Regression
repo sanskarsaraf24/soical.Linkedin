@@ -1,0 +1,158 @@
+# Exact Steps to Fix Graphics Regression
+
+## Step 1: Diagnose (1 minute)
+- Look at current graphics ✓ (You did this—they're cluttered)
+- Root cause: Prompt too permissive
+- Solution: Use stricter prompt
+
+## Step 2: Get Corrected Prompt (1 minute)
+- Open `buildGraphicPrompt_CORRECTED.js`
+- Copy entire function code
+
+## Step 3: Replace in server.js (3 minutes)
+
+**Find this:**
+```javascript
+function buildGraphicPrompt({ account, brand, title, content, kicker, logoUrl, visualDirection, visualState, layoutArchetype = 'A' }) {
+  const displayBrandName = brand.brandName || account.name;
+  // ... rest of old function
+}
+```
+
+**Replace with:** (entire content from buildGraphicPrompt_CORRECTED.js)
+
+**Save.**
+
+## Step 4: Rebuild & Restart (3 minutes)
+
+```bash
+npm run build
+npm run start
+```
+
+Wait for server to start. You should see:
+```
+LinkedIn AI server running on port 3000
+```
+
+## Step 5: Test (3 minutes)
+
+1. Open dashboard: `http://localhost:3000/linkedin/`
+2. Select **Sanskar Saraf** account
+3. Click **"Generate tomorrow's posts"**
+4. Wait ~30 seconds
+5. Check "Production Queue" tab
+6. Click preview on first graphic
+
+**Measure text in DevTools:**
+- Open Preview modal
+- Right-click iframe → Inspect
+- Find `<h1>` element
+- Check computed font-size
+- Should be 80–92px ✓
+
+**Check colors:**
+- Open DevTools → Console
+- Run: `document.querySelectorAll('[style*="color"]')`
+- Count unique hex values
+- Should be 2–3 maximum ✓
+
+**Visual check:**
+- Does it look professional?
+- Is text readable?
+- Is layout clean (not cluttered)?
+- Are there unnecessary shapes?
+
+## Step 6: If Not Good
+
+### Scenario A: Text still too small
+- Problem: CSS not updated
+- Solution: Hard refresh browser (Cmd+Shift+R)
+- If still wrong: Check that buildGraphicPrompt was fully replaced
+
+### Scenario B: Still too many colors
+- Problem: Old prompt still in use
+- Solution: Clear server logs, restart server
+- Check: `grep "buildGraphicPrompt" server.js` shows NEW function
+
+### Scenario C: Still cluttered
+- Problem: Model (Haiku) can't follow strict constraints
+- Solution: Upgrade to Sonnet
+  ```bash
+  # In server.js, find line:
+  const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5';
+  
+  # Change to:
+  const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+  
+  # Restart server
+  npm run start
+  ```
+
+## Step 7: Deploy
+
+Once graphics look good:
+
+1. Test with all 3 accounts (Sanskar, Minpay, Casemate)
+2. Verify 3 posts per account meet quality bar
+3. Commit changes
+4. Deploy to production
+
+---
+
+## Success Criteria
+
+After fix, graphics should:
+
+- ✓ All text readable (≥32px)
+- ✓ Maximum 3 colors per card
+- ✓ Clean, minimal aesthetic
+- ✓ Professional (8/10 rating)
+- ✓ No unnecessary shapes
+- ✓ Grid-aligned layout
+- ✓ Clear typography hierarchy
+
+---
+
+## Troubleshooting Checklist
+
+| Issue | Check | Fix |
+|-------|-------|-----|
+| Text still small | Is buildGraphicPrompt fully replaced? | Full copy-paste |
+| Too many colors | Are brand guides using old format? | Update storage.ts |
+| Still cluttered | Is model Haiku or Sonnet? | Switch to Sonnet |
+| Layouts same | Is layoutArchetype passed? | Check server_changes.js |
+
+---
+
+## Time Budget
+
+| Task | Time |
+|------|------|
+| Copy corrected function | 1 min |
+| Replace in server.js | 2 min |
+| Rebuild & restart | 3 min |
+| Test | 3 min |
+| Debug (if needed) | 5 min |
+| **Total** | **14 min** |
+
+---
+
+## When You're Done
+
+You should have:
+- ✓ Corrected prompt in server.js
+- ✓ Graphics that are readable, minimal, professional
+- ✓ No regression (better than before attempt)
+- ✓ Ready for production
+
+---
+
+## One More Thing
+
+**Save the corrected prompt.** Next time you need to adjust:
+- Typography? Update the font-size ranges
+- Colors? Update the "2–3 max" rule
+- Elements? Update the "1 accent max" rule
+
+The structure is solid. Future tweaks are small edits, not rewrites.
