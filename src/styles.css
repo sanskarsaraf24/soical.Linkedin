@@ -545,9 +545,9 @@ select:focus, input:focus, textarea:focus {
 }
 
 .design-thumb iframe {
-  width: 1200px;
-  height: 1200px;
-  transform: scale(0.0916);
+  width: 1080px;
+  height: 1080px;
+  transform: scale(0.1019);
   transform-origin: 0 0;
   border: none;
   pointer-events: none;
@@ -598,7 +598,7 @@ select:focus, input:focus, textarea:focus {
 }
 
 .modal.large {
-  width: min(1200px, 100%);
+  width: min(1080px, 100%);
 }
 
 .modal-head {
@@ -643,9 +643,9 @@ select:focus, input:focus, textarea:focus {
 }
 
 .preview-frame iframe {
-  width: 1200px;
-  height: 1200px;
-  transform: scale(0.4166);
+  width: 1080px;
+  height: 1080px;
+  transform: scale(0.463);
   transform-origin: 0 0;
   border: 0;
 }

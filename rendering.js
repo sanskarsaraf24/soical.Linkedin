@@ -25,7 +25,7 @@ export async function renderHtmlToPng(html, filename) {
   
   try {
     const page = await browser.newPage();
-    const size = 1200;
+    const size = 1080;
     await page.setViewport({ width: size, height: size, deviceScaleFactor: 2 });
     await page.setContent(html, { waitUntil: 'networkidle0' });
     

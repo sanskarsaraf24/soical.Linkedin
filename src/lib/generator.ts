@@ -89,8 +89,8 @@ function buildHtmlAsset(
         -webkit-font-smoothing: antialiased;
       }
       .wrap {
-        width: 1200px;
-        height: 1200px;
+        width: 1080px;
+        height: 1080px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;

@@ -40,6 +40,15 @@ export interface StrategyItem {
   angle: string;
   visualDirection: string;
   visualState?: string;
+  targetDate?: string;
+  targetTime?: string;
+  timezone?: string;
+  scheduledAt?: string;
+  scheduleSlotKey?: string;
+  generatedContent?: {
+    title?: string;
+    content?: string;
+  };
 }
 
 export interface BrandProfile {

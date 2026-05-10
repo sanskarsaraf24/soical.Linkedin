@@ -35,11 +35,57 @@ function normalizeLinkedInApiVersion(value) {
 const linkedInApiVersion = normalizeLinkedInApiVersion(process.env.LINKEDIN_API_VERSION);
 const schedulerTimezone = process.env.SCHEDULER_TIMEZONE || 'Asia/Kolkata';
 const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5';
+console.log('Anthropic Model Loaded:', anthropicModel);
 
 const groq = groqKey ? new Groq({ apiKey: groqKey }) : null;
 const anthropic = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
 
+function trimContext(text, maxLength = 600) {
+  if (!text || text.length <= maxLength) return text;
+  return text.substring(0, maxLength) + '...';
+}
+
+function cleanMarkdown(text) {
+  if (!text) return '';
+  // Remove markdown code blocks if present
+  let cleaned = text.trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```[a-z]*\n/i, '').replace(/\n```$/m, '');
+  }
+  return cleaned.trim();
+}
+
+function parsePostingTime(value = '09:00') {
+  const raw = String(value || '').trim();
+  const meridiemMatch = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (meridiemMatch) {
+    let hour = Number(meridiemMatch[1]);
+    const minute = Number(meridiemMatch[2] || 0);
+    const meridiem = meridiemMatch[3].toUpperCase();
+    if (meridiem === 'PM' && hour < 12) hour += 12;
+    if (meridiem === 'AM' && hour === 12) hour = 0;
+    return {
+      hour,
+      minute,
+      label: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+    };
+  }
+
+  const [hourRaw = '9', minuteRaw = '0'] = raw.split(':');
+  const hour = Math.min(Math.max(Number(hourRaw) || 9, 0), 23);
+  const minute = Math.min(Math.max(Number(minuteRaw) || 0, 0), 59);
+  return {
+    hour,
+    minute,
+    label: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+  };
+}
+
 app.use(cors());
+app.use((req, res, next) => {
+  console.log(`[HTTP] ${req.method} ${req.url}`);
+  next();
+});
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -177,7 +223,7 @@ function createHtmlAsset(title = 'LinkedIn post', content = '', style = 'Feature
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     html,body{margin:0;width:100%;height:100%;background:${bg};font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
-    .wrap{width:1200px;height:1200px;display:flex;align-items:center;justify-content:center;padding:80px;box-sizing:border-box;position:relative;overflow:hidden;background:${bg};}
+    .wrap{width:1080px;height:1080px;display:flex;align-items:center;justify-content:center;padding:72px;box-sizing:border-box;position:relative;overflow:hidden;background:${bg};}
     .bg-shape{position:absolute;border-radius:50%;opacity:0.07;background:${accent};}
     .bg-shape.a{width:700px;height:700px;right:-180px;top:-180px;}
     .bg-shape.b{width:350px;height:350px;left:-80px;bottom:-80px;}
@@ -218,73 +264,80 @@ function createHtmlAsset(title = 'LinkedIn post', content = '', style = 'Feature
 
 function buildGraphicPrompt({ account, brand, title, content, kicker, logoUrl, visualDirection, visualState }) {
   const displayBrandName = brand.brandName || account.name;
-  const showFooter = !!logoUrl || !!displayBrandName;
-  const footerInstruction = showFooter
-    ? '5. Footer (MANDATORY) — You MUST render the brand name EXACTLY as: "' + displayBrandName + '"' + (logoUrl ? '. Also include the logo: ' + logoUrl : '') + '. Place this in a professional footer at the bottom.'
-    : '5. No footer.';
-  const captionLine = String(content || '').split('\n').find(Boolean)?.slice(0, 140) || '';
+  const captionLine = String(content || '').split('\n').find(Boolean)?.slice(0, 160) || '';
 
-  return `You are a senior brand designer. Create a premium LinkedIn square graphic (1200x1200px) as a single self-contained HTML document.
+  return `You are a senior brand designer and frontend engineer. Create a premium LinkedIn square graphic (1080x1080px) as a single self-contained HTML document.
+
+## Primary Rule
+The Brand Identity & Design System below is the source of truth. Do not impose a generic SaaS, startup, gradient, or editorial style if the brand guide says otherwise.
 
 ## Brand Identity & Design System
-Read this design guide and derive the core visual identity from it (colors, typography). 
-Pay special attention to the "COLOR SYSTEM" and "LAYOUT ARCHETYPES" sections.
+Read this design guide and derive the core visual identity (colors, fonts).
 ---
 ${brand.imageStyle || 'Clean, premium editorial. Minimal with strong typographic hierarchy. Neutral palette.'}
 ---
 
-## Design Decision for this Post
-${visualState ? `STATE: ${visualState}. Use this specific color/style combo from the guide.` : 'SHUFFLE: Choose one of the visual states (A, B, or C) from the brand guide that best fits this content.'}
-DIRECTION: ${visualDirection || 'Decide the best layout and composition for this content.'}
+## SPECIFIC VISUAL STATE (MANDATORY)
+You MUST use the visual state: **${visualState || 'A'}**
+If the Brand Guide defines multiple states (like A, B, C or Navy, Off-White, Royal), you MUST strictly implement the one assigned above.
+For example, if the state is "WARM OFF-WHITE", your background MUST be off-white and your typography must be dark navy/black.
 
-## Critical Composition Rules (TO AVOID REPETITION & EMPTY SPACE)
-1. VARIATION: Do not use the same layout as previous posts. Shuffle between the Archetypes defined in the guide.
-2. SCALE: The design MUST fill the 1200x1200px canvas. 
-3. TYPOGRAPHY: Headline (h1) must be HUGE (96px–110px). It is the hero.
-4. MARGINS: Use standard margins (80px–100px) but ensure the design expands to the edges.
+## LAYOUT
+Use the layout direction from the brand guide or strategy.
+Direction: ${visualDirection || 'Choose a layout that fits the brand guide and the content.'}
 
-From the brief and strategy, hard-code in CSS:
-- Background color or gradient
-- Card surface color and border style
-- Primary text color
-- Secondary/muted text color
-- Accent/highlight color (kicker badge, divider line, emphasis)
-- Font families from Google Fonts that match the typography direction in the brief
+## DESIGN TOKENS (Recommended Baseline)
+* { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+html, body { width: 1080px; height: 1080px; margin: 0; padding: 0; overflow: hidden; }
+body { padding: 100px; display: flex; flex-direction: column; justify-content: space-between; }
 
-## Canvas
-1200x1200px exactly. The outer html and body must fill this space with no scroll.
-
-## Required elements (top to bottom)
-1. Kicker badge — small pill label: "${kicker}"
-2. Headline (h1) — dominant, derived from: "${title}" (3–8 words, sentence-case only, never uppercase)
-3. Accent divider — horizontal line, styled per the brand brief
-4. Supporting sentence — 32–40px, from the post caption
-${footerInstruction}
-
-## Typography rules
-- Import fonts from Google Fonts matching the brief (use @import or <link>)
-- Headlines: sentence-case or title-case ONLY — text-transform: uppercase is FORBIDDEN on h1
-- All text must be HTML elements — never SVG paths, canvas, or background-image text
-
-## Composition rules
-- Layout must reflect the identity AND the visual strategy (AI Decision).
-- Max 2 subtle decorative background elements.
-- Strong contrast between all text and background.
-- Logo Contrast: The provided logo might be black or white. If your chosen background color makes the logo illegible, you MUST apply \`filter: invert(1);\` or \`filter: brightness(0) invert(1);\` to the \`.logo\` CSS class to ensure strong visibility.
-- No placeholder text.
-
-## Post content
-Title: ${title}
-Caption (use first meaningful sentence as supporting sentence): ${captionLine}
-
-## Output
-Only valid, complete HTML+CSS from <!doctype html>. No markdown, no explanation, no code fences.
-Add data-required="headline" to h1 and data-required="subheadline" to the supporting sentence.`;
+/* TYPOGRAPHY SYSTEM - NO TEXT BELOW 32PX ALLOWED */
+h1 {
+  font-size: 100px !important;
+  line-height: 1.05 !important;
+  letter-spacing: -3px !important;
+  font-weight: 800 !important;
+  margin: 0 0 40px 0;
+}
+.supporting-text {
+  font-size: 38px !important;
+  line-height: 1.4 !important;
+  font-weight: 400 !important;
+}
+.kicker {
+  font-size: 32px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 4px !important;
+  font-weight: 700 !important;
+  margin-bottom: 30px;
 }
 
-function buildStrategyPrompt({ account, brand }) {
+/* BRANDING */
+.logo { height: 100px; width: auto; object-fit: contain; margin-bottom: 20px; }
+
+## LOGO & BRANDING RULES (CRITICAL)
+1. LOGO IMAGE: ${logoUrl}
+2. ABSOLUTELY NO TEXT BRANDING: Do NOT output the text "${displayBrandName}" or any taglines in the HTML. The logo image ALREADY contains the brand name. Adding text creates ugly duplicates.
+3. LOGO PLACEMENT: Place the logo ONCE.
+4. CONTRAST: Use \`filter: brightness(0) invert(1);\` on the .logo if the background is dark.
+
+## CONTENT TO RENDER
+- KICKER: "${kicker || ''}"
+- HEADLINE: "${title}"
+- SUB-HEADLINE: "${captionLine}"
+
+## OUTPUT REQUIREMENTS
+- No markdown, no fences.
+- All text MUST be 32px or larger.
+- Use the fonts specified in the brand guide. If none are specified, use Google Fonts: Playfair Display for headings and Inter for body.
+- Add data-required="headline" to the h1 and data-required="subheadline" to the supporting sentence.
+- Output only valid complete HTML/CSS from <!doctype html>.`;
+}
+
+function buildStrategyPrompt({ account, brand, slots = [] }) {
   const daysMap = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const activeDays = (brand.postingDays || [1, 3, 5]).map(d => daysMap[d]).join(', ');
+  const slotLines = slots.map(slot => `- ${slot.weekdayName}, ${slot.targetDate} at ${slot.targetTime}`).join('\n');
 
   return `You are a world-class social media strategist. Plan 1 week of LinkedIn content for ${account.name}.
 
@@ -293,12 +346,18 @@ function buildStrategyPrompt({ account, brand }) {
 - Voice: ${brand.voice}
 - Tone: ${brand.tone}
 - Pillars: ${(brand.contentPillars || []).join(', ')}
+- Writing style: ${brand.writingStyle}
+- Content themes: ${(brand.contentThemes || []).join(', ')}
+- Banned topics/claims: ${(brand.bannedTopics || []).join(', ')}
+
+## Market Context
+The account is based in India and writes for an India-based audience. Use this as business context, but only mention India-specific laws, frameworks, currency formats, or terminology when the brand profile or topic makes it relevant.
 
 ## Strategy Mission
-Analyze the brand and current LinkedIn ecosystem. Brainstorm a high-performance weekly plan.
+Analyze the brand profile and current LinkedIn ecosystem. Brainstorm a high-performance weekly plan.
 Each post should feel fresh, practitioners-led, and highly shareable.
 
-For each of these days (${activeDays}), provide:
+For each of these days (${slotLines || activeDays}), provide:
 1. Topic: Specific theme.
 2. Hook: A punchy first-line idea.
 3. Angle: The unique insight or "alpha" shared.
@@ -364,32 +423,32 @@ function createInitialWorkspace() {
       },
     {
       accountId: 'acc_page_1',
-      aboutCompany: 'Minpay Consultants helps businesses with payment workflows, operational efficiency, and AI-driven systems.',
-      voice: 'Clear, polished, enterprise-friendly',
+      aboutCompany: 'Minpay Consultants LLP is an India-based debt resolution and legal settlement support company for borrowers dealing with credit card and personal loan dues, lender communication, recovery pressure, and structured settlement processes. It does not provide loans or financing.',
+      voice: 'Serious, trustworthy, calm, legally aware, empathetic, and solution-oriented. The voice should feel like a professional consultation environment, not an advertisement or loan product.',
         tone: 'professional',
-        contentPillars: ['product updates', 'case studies', 'AI workflows'],
-        hashtags: ['#Product', '#AIWorkflow', '#B2B'],
-        imageStyle: 'data-driven',
-        writingStyle: 'Value-first, concise, outcome-focused',
-        contentThemes: ['launches', 'process wins', 'customer results'],
-        ctaStyle: 'Invite demos and comments',
-        bannedTopics: ['internal drama'],
+        contentPillars: ['debt resolution education', 'recovery call handling', 'legal settlement process', 'borrower expectations', 'qualification clarity'],
+        hashtags: ['#DebtResolution', '#LoanSettlement', '#FinancialStress'],
+        imageStyle: 'Serious legal-financial visual language. Use deep muted tones such as navy, charcoal, or dark slate with controlled emerald accents. Keep layouts clean, structured, trustworthy, and calm with ample whitespace. Avoid playful, decorative, overly promotional, or loan-provider styling.',
+        writingStyle: 'Short, clear, empathetic, and controlled. Explain the process at a high level, set realistic expectations, and avoid sounding sales-heavy. Never overpromise outcomes.',
+        contentThemes: ['recovery pressure', 'credit card and personal loan dues', 'structured settlement support', 'lender communication', 'client qualification', 'documentation and process clarity'],
+        ctaStyle: 'Invite users to check eligibility or speak with the team without promising results.',
+        bannedTopics: ['loan offers', 'new loans', 'guaranteed settlement percentage', 'instant stop to recovery calls', 'legal advice', 'financial advice', 'fearmongering', 'unverified claims'],
         postingDays: [1, 2, 3, 4, 5],
         postingTimes: ['10:00', '14:00', '17:30'],
         timezone: 'Asia/Kolkata',
       },
     {
       accountId: 'acc_page_2',
-      aboutCompany: 'Casemate AI builds modern AI workflows, systems, and automation experiences for teams that want clean execution.',
-      voice: 'Modern, visual, design-aware',
-        tone: 'inspirational',
-        contentPillars: ['automation', 'systems', 'design'],
-        hashtags: ['#Automation', '#SystemsThinking', '#Design'],
-        imageStyle: 'bold',
-        writingStyle: 'Story-first with visual emphasis',
-        contentThemes: ['frameworks', 'playbooks', 'before/after'],
-        ctaStyle: 'Drive saves and shares',
-        bannedTopics: ['unverified claims'],
+      aboutCompany: 'Casemate AI is an India-based legal AI platform for advocates and litigation teams. It helps with court-ready drafting, source-verified legal research, matter organisation, hearing calendars, WhatsApp reminders, and controlled collaboration inside case folders.',
+      voice: 'Institutional, authoritative, structured, professional, court-ready, and never playful. The product should feel like a disciplined legal associate for Indian litigation teams.',
+        tone: 'professional',
+        contentPillars: ['structured legal drafting', 'source-strict research', 'case-centric workspace', 'hearing calendar and alerts', 'professional responsibility'],
+        hashtags: ['#LegalAI', '#IndianLitigation', '#LegalTech'],
+        imageStyle: 'Primary colors: Deep Navy #0F172A, Muted Royal Blue #1D4ED8, Warm Off-White #F5F3EF. Accent: Slate Grey #334155, Deep Emerald #065F46 only for success states. Typography: Playfair Display for headings, Inter for body, JetBrains Mono for citations. Visual language: minimalist, high whitespace, subtle borders, flat document-style UI, thin divider lines, soft shadows, squared card corners, navy primary buttons with white text. Avoid neon accents, purple tones, startup-style gradients, stock imagery, playful visuals, and rounded pill-heavy styling.',
+        writingStyle: 'Precise, legal, structured, and specific to Indian litigation workflows. Emphasize court-ready drafting, verified citations, confidentiality, advocate control, and refusal to fabricate sources.',
+        contentThemes: ['court-ready drafting', 'verified Indian case law', 'matter organisation', 'generic AI limitations', 'advocate control', 'confidentiality', 'hearing discipline'],
+        ctaStyle: 'Invite advocates to start a 14-day free trial or see how the workflow works.',
+        bannedTopics: ['legal advice', 'fabricated citations', 'guaranteed case outcomes', 'playful tone', 'generic AI hype', 'ChatGPT wrapper positioning', 'unverified claims'],
         postingDays: [2, 4],
         postingTimes: ['11:00', '16:00'],
         timezone: 'Asia/Kolkata',
@@ -601,11 +660,7 @@ function absolutizeHtmlAssets(html) {
 }
 
 function composeLinkedInText(post) {
-  return [
-    post.content || '',
-    post.cta || '',
-    Array.isArray(post.hashtags) ? post.hashtags.join(' ') : '',
-  ].filter(Boolean).join('\n\n');
+  return post.content || '';
 }
 
 async function uploadLinkedInImage({ accessToken, authorUrn, imagePath }) {
@@ -660,6 +715,7 @@ async function createLinkedInPost({ accessToken, authorUrn, post, imageUrn }) {
     headers: linkedInHeaders(accessToken, { 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   });
+  console.log(`[LINKEDIN POST] Sent payload with commentary length: ${payload.commentary.length}`);
   if (!response.ok) {
     throw new Error(`LinkedIn post failed: ${await readLinkedInError(response)}`);
   }
@@ -714,6 +770,15 @@ function getZonedParts(date, timeZone) {
   });
   const parts = Object.fromEntries(formatter.formatToParts(date).map(part => [part.type, part.value]));
   const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const weekdayNameMap = {
+    Sun: 'Sunday',
+    Mon: 'Monday',
+    Tue: 'Tuesday',
+    Wed: 'Wednesday',
+    Thu: 'Thursday',
+    Fri: 'Friday',
+    Sat: 'Saturday',
+  };
   return {
     year: Number(parts.year),
     month: Number(parts.month),
@@ -722,6 +787,7 @@ function getZonedParts(date, timeZone) {
     minute: Number(parts.minute),
     second: Number(parts.second),
     weekday: weekdayMap[parts.weekday] ?? 0,
+    weekdayName: weekdayNameMap[parts.weekday] || '',
     dateKey: `${parts.year}-${parts.month}-${parts.day}`,
     timeKey: `${parts.hour}:${parts.minute}`,
   };
@@ -747,6 +813,18 @@ function getTomorrowParts(timeZone, now = new Date()) {
   return getZonedParts(new Date(tomorrowNoonUtc), timeZone);
 }
 
+function getLocalDatePartsFromOffset(baseParts, daysToAdd, timeZone) {
+  const noonUtc = Date.UTC(baseParts.year, baseParts.month - 1, baseParts.day + daysToAdd, 12, 0, 0);
+  return getZonedParts(new Date(noonUtc), timeZone);
+}
+
+function getNextWeekParts(timeZone, now = new Date()) {
+  const today = getZonedParts(now, timeZone);
+  const daysUntilNextMonday = ((1 - today.weekday + 7) % 7) || 7;
+  const monday = getLocalDatePartsFromOffset(today, daysUntilNextMonday, timeZone);
+  return Array.from({ length: 7 }, (_, index) => getLocalDatePartsFromOffset(monday, index, timeZone));
+}
+
 function nextSchedulerRunIso(timeZone = schedulerTimezone, now = new Date()) {
   const current = getZonedParts(now, timeZone);
   const runTodayUtc = zonedLocalToUtc(
@@ -761,8 +839,28 @@ function nextSchedulerRunIso(timeZone = schedulerTimezone, now = new Date()) {
   ).toISOString();
 }
 
+function nextWeeklySchedulerRunIso(timeZone = schedulerTimezone, now = new Date()) {
+  const current = getZonedParts(now, timeZone);
+  let daysUntilSaturday = (6 - current.weekday + 7) % 7;
+  const runDate = getLocalDatePartsFromOffset(current, daysUntilSaturday, timeZone);
+  let runUtc = zonedLocalToUtc(
+    { year: runDate.year, month: runDate.month, day: runDate.day, hour: 8, minute: 0 },
+    timeZone,
+  );
+  if (runUtc <= now) {
+    daysUntilSaturday = daysUntilSaturday || 7;
+    const nextRunDate = getLocalDatePartsFromOffset(current, daysUntilSaturday, timeZone);
+    runUtc = zonedLocalToUtc(
+      { year: nextRunDate.year, month: nextRunDate.month, day: nextRunDate.day, hour: 8, minute: 0 },
+      timeZone,
+    );
+  }
+  return runUtc.toISOString();
+}
+
 function choosePostingTime(workspace, accountId, brand) {
-  const postingTimes = Array.isArray(brand.postingTimes) && brand.postingTimes.length ? brand.postingTimes : ['09:00'];
+  const postingTimes = (Array.isArray(brand.postingTimes) && brand.postingTimes.length ? brand.postingTimes : ['09:00'])
+    .map(time => parsePostingTime(time).label);
   const timeUsage = new Map(postingTimes.map(time => [time, 0]));
   for (const post of workspace.posts || []) {
     if (post.accountId !== accountId || !post.scheduledAt) continue;
@@ -783,7 +881,6 @@ function buildGenerationPrompt({ account, brand, targetDate, targetTime, strateg
   } catch { dayOfWeek = targetDate; }
   const pillarsStr = (brand.contentPillars || []).join(', ');
   const themesStr = (brand.contentThemes || []).join(', ');
-  const bannedStr = (brand.bannedTopics || []).join(', ');
 
   return `Write one LinkedIn post for ${account.name}, scheduled for ${dayOfWeek} at ${targetTime}.
 
@@ -797,19 +894,20 @@ Pick ONE for this post, vary across the week: ${pillarsStr}`}
 
 ## Account context
 - Type: ${account.type === 'organization' ? 'Company page' : 'Personal founder/executive profile'}
-- About: ${brand.aboutCompany || ''}
-- Brand voice: ${brand.voice}
+- About: ${trimContext(brand.aboutCompany || '', 1000)}
+- Brand voice: ${trimContext(brand.voice || '', 1000)}
 - Tone: ${brand.tone}
 - Writing style: ${brand.writingStyle}
+- Content themes: ${themesStr}
 - CTA style: ${brand.ctaStyle}
 - Preferred hashtags: ${(brand.hashtags || []).join(' ')}
-- Banned topics: ${bannedStr}
+- Banned topics: ${(brand.bannedTopics || []).join(', ')}
 
 ## LinkedIn post philosophy
-Write like a smart practitioner sharing a genuine observation with a colleague — not like a marketer running a campaign. The best LinkedIn posts feel personal, specific, and earned. They make the reader feel like they learned something real, not like they were pitched something.
+The brand voice page is the primary source of truth. Follow the account context, brand voice, writing style, CTA style, content themes, and banned topics above. The company is based in India and writes for an India-based audience, but do not force India-specific legal frameworks, terminology, or currency unless the topic or brand profile calls for it. The best LinkedIn posts feel like a smart practitioner sharing a genuine observation with a colleague, not like a marketer running a campaign.
 
 ## Required post structure
-1. **Hook (line 1 only)** — A single punchy line that makes a specific claim, shares a surprising observation, or opens a story moment. Good hooks are concrete and specific. Bad hooks: "I'm excited to share", "Here are X tips", "Let's talk about", "The truth about". Make it interesting enough that someone would stop scrolling.
+1. **Hook (line 1 only)** — A single punchy line that makes a specific claim, shares a surprising observation, or opens a story moment. Good hooks are concrete and specific. Bad hooks: "I'm excited to share", "Here are X tips", "Let's talk about", "The truth about". Make it interesting enough enough that someone would stop scrolling.
 
 2. **Body (2-4 short paragraphs, blank line between each)** — Build on the hook with a story, observation, or practical insight. Ground it in real experience or a specific situation. Include a "why this matters" angle. Each paragraph is 1-3 short sentences. NO bullet lists unless the post is genuinely a framework/checklist (max 4 items even then).
 
@@ -828,6 +926,31 @@ Write like a smart practitioner sharing a genuine observation with a colleague �
 
 ## Format
 Plain text. Blank lines between paragraphs. Hashtags on the last line only.`;
+}
+
+function buildBatchGenerationPrompt({ account, brand, strategyItem }) {
+  const common = buildGenerationPrompt({
+    account,
+    brand,
+    targetDate: strategyItem?.targetDate || '',
+    targetTime: strategyItem?.targetTime || '',
+    strategyItem,
+  });
+  return `${common}
+
+## CRITICAL: OUTPUT FORMAT
+You MUST return the post in valid JSON format only. Do not include any text outside the JSON.
+JSON Structure:
+{
+  "title": "A short, punchy 3-5 word internal title for this post",
+  "content": "The full LinkedIn post text, including the hook, body, close, and hashtags exactly as requested above."
+}`;
+}
+
+function extractJsonArray(text = '') {
+  const raw = String(text || '');
+  const jsonStr = raw.includes('[') ? raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1) : '[]';
+  return JSON.parse(jsonStr);
 }
 
 function cleanGeneratedText(value = '') {
@@ -870,6 +993,15 @@ function stripCodeFences(value = '') {
     .trim();
 }
 
+function normalizeGraphicHtml(html = '') {
+  return stripCodeFences(html)
+    .replace(/1200x1200/g, '1080x1080')
+    .replace(/width:\s*1200px/g, 'width:1080px')
+    .replace(/height:\s*1200px/g, 'height:1080px')
+    .replace(/width="1200"/g, 'width="1080"')
+    .replace(/height="1200"/g, 'height="1080"');
+}
+
 function hasVisiblePosterText(html = '') {
   const withoutCode = String(html || '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
@@ -891,22 +1023,22 @@ async function generateGraphicHtml({ account, brand, title, content, kicker, log
       const response = await anthropic.messages.create({
         model: anthropicModel,
         max_tokens: 2400,
-        system: `You are a senior brand designer who creates complete, self-contained HTML/CSS social graphics. Your aesthetic is clean, editorial, and premium — think Stripe, Linear, or Notion's visual design language. You use generous whitespace, strong typographic hierarchy, and minimal geometric elements. You always use Google Fonts (Manrope for headings, Inter for body). You NEVER use text-transform: uppercase on headlines. You NEVER use more than 2 subtle background shapes. The poster must load correctly in a browser with no external dependencies except Google Fonts.`,
+        system: `You are a senior brand designer who creates complete, self-contained HTML/CSS social graphics. The brand guide in the user prompt is the source of truth for colors, typography, layout, and visual tone. Do not impose a generic SaaS style when the guide specifies another direction. The poster must load correctly in a browser with no external dependencies except Google Fonts.`,
         messages: [{
           role: 'user',
-          content: buildGraphicPrompt({ 
-            account, 
-            brand, 
-            title, 
-            content, 
-            kicker, 
-            logoUrl, 
+          content: buildGraphicPrompt({
+            account,
+            brand,
+            title,
+            content,
+            kicker,
+            logoUrl,
             visualDirection: brand.visualDirection,
             visualState: brand.visualState
           }),
         }],
       });
-      const html = stripCodeFences(response.content?.[0]?.text || '');
+      const html = normalizeGraphicHtml(response.content?.[0]?.text || '');
       if ((html.includes('<html') || html.includes('<!doctype html')) && hasVisiblePosterText(html)) {
         return html;
       }
@@ -931,7 +1063,7 @@ async function generatePostContent({ account, brand, prompt }) {
       const response = await anthropic.messages.create({
         model: anthropicModel,
         max_tokens: 1200,
-        system: `You are a sharp, opinionated creator who writes LinkedIn posts for ${account.name}. You write like a practitioner sharing real experience — specific stories, honest observations, and questions that genuinely invite a reply. You never use corporate buzzwords, engagement bait, or generic motivational language. You sound like a human, not a content calendar. Brand voice: ${brand.voice}. Tone: ${brand.tone}.`,
+        system: `You write LinkedIn posts for ${account.name}. The brand profile is the source of truth. Write for an India-based audience with the voice, tone, writing style, CTA style, and restrictions defined by the brand profile. Do not add claims, offers, legal frameworks, or product promises that are not supported by the brand profile. Brand voice: ${brand.voice}. Tone: ${brand.tone}. Writing style: ${brand.writingStyle}.`,
         messages: [{ role: 'user', content: prompt }],
       });
       content = cleanGeneratedText(response.content?.[0]?.text || '');
@@ -947,7 +1079,7 @@ async function generatePostContent({ account, brand, prompt }) {
         messages: [
           {
             role: 'system',
-            content: `You are a sharp, opinionated creator who writes LinkedIn posts for ${account.name}. Write like a practitioner sharing real experience — specific stories, honest observations, and questions that genuinely invite a reply. Never use corporate buzzwords, engagement bait, or generic motivational language. Brand voice: ${brand.voice}. Tone: ${brand.tone}.`,
+            content: `You write LinkedIn posts for ${account.name}. The brand profile is the source of truth. Write for an India-based audience with the voice, tone, writing style, CTA style, and restrictions defined by the brand profile. Do not add claims, offers, legal frameworks, or product promises that are not supported by the brand profile. Brand voice: ${brand.voice}. Tone: ${brand.tone}. Writing style: ${brand.writingStyle}.`,
           },
           { role: 'user', content: prompt },
         ],
@@ -992,13 +1124,13 @@ async function createScheduledPostForTomorrow({ workspace, account, brand, targe
   const prompt = buildGenerationPrompt({ account, brand, targetDate, targetTime, strategyItem });
   const { content, title } = await generatePostContent({ account, brand, prompt });
   const theme = strategyItem?.topic || brand.contentThemes?.[Math.abs(scheduleSlotKey.length) % Math.max(brand.contentThemes.length, 1)] || brand.contentPillars?.[0] || 'general';
-  
+
   // Derive a clean kicker from content theme or pillar
   const kicker = theme.charAt(0).toUpperCase() + theme.slice(1);
   const graphicHtml = await generateGraphicHtml({
     account,
-    brand: { 
-      ...brand, 
+    brand: {
+      ...brand,
       visualDirection: strategyItem?.visualDirection,
       visualState: strategyItem?.visualState
     },
@@ -1066,7 +1198,7 @@ async function generateTomorrowPosts(workspace, now = new Date()) {
     }
 
     const targetTime = choosePostingTime(workspace, account.id, brand);
-    const [hour = 9, minute = 0] = targetTime.split(':').map(Number);
+    const { hour, minute } = parsePostingTime(targetTime);
     const scheduledAt = zonedLocalToUtc(
       { year: targetDay.year, month: targetDay.month, day: targetDay.day, hour, minute },
       timeZone,
@@ -1113,6 +1245,154 @@ async function generateTomorrowPosts(workspace, now = new Date()) {
   return { ...result, tomorrowDate };
 }
 
+function getWeeklyBatchSlots({ workspace, account, brand, now = new Date() }) {
+  const timeZone = brand.timezone || workspace.settings?.defaultTimezone || schedulerTimezone;
+  const postingDays = Array.isArray(brand.postingDays) && brand.postingDays.length ? brand.postingDays : [1, 3, 5];
+  const postingTimes = (Array.isArray(brand.postingTimes) && brand.postingTimes.length ? brand.postingTimes : ['09:00'])
+    .map(time => parsePostingTime(time).label);
+  const weekParts = getNextWeekParts(timeZone, now);
+  const slots = [];
+  let skipped = 0;
+
+  for (const dayParts of weekParts) {
+    if (!postingDays.includes(dayParts.weekday)) continue;
+
+    const postingTime = postingTimes[slots.length % postingTimes.length];
+    const { hour, minute, label } = parsePostingTime(postingTime);
+    const scheduledAt = zonedLocalToUtc(
+      { year: dayParts.year, month: dayParts.month, day: dayParts.day, hour, minute },
+      timeZone,
+    );
+    const scheduleSlotKey = `${account.id}:${dayParts.dateKey}:${label}:${timeZone}`;
+    if (hasExistingPostForSlot(workspace, account.id, dayParts.dateKey, scheduleSlotKey, timeZone)) {
+      skipped += 1;
+      continue;
+    }
+
+    slots.push({
+      day: dayParts.weekdayName,
+      weekday: dayParts.weekday,
+      weekdayName: dayParts.weekdayName,
+      targetDate: dayParts.dateKey,
+      targetTime: label,
+      timezone: timeZone,
+      scheduledAt: scheduledAt.toISOString(),
+      scheduleSlotKey,
+    });
+  }
+
+  return { slots, skipped, weekStart: weekParts[0]?.dateKey || '', weekEnd: weekParts[6]?.dateKey || '' };
+}
+
+function enrichStrategyWithSlots(strategy, slots, brand) {
+  return slots.map((slot, index) => {
+    const item = strategy[index] || {};
+    const fallbackTheme = brand.contentThemes?.[index % Math.max(brand.contentThemes.length, 1)]
+      || brand.contentPillars?.[index % Math.max(brand.contentPillars.length, 1)]
+      || 'general';
+    return {
+      day: slot.weekdayName,
+      topic: item.topic || fallbackTheme,
+      hook: item.hook || `A practical observation about ${fallbackTheme}`,
+      angle: item.angle || `Explain why ${fallbackTheme} matters to this audience.`,
+      visualState: item.visualState || '',
+      visualDirection: item.visualDirection || '',
+      targetDate: slot.targetDate,
+      targetTime: slot.targetTime,
+      timezone: slot.timezone,
+      scheduledAt: slot.scheduledAt,
+      scheduleSlotKey: slot.scheduleSlotKey,
+    };
+  });
+}
+
+async function startWeeklyBatchForBrand(workspace, brand, now = new Date()) {
+  if (!anthropic || !anthropicKey) {
+    throw new Error('Anthropic API key is required for weekly batch generation.');
+  }
+  const activeBatchStatus = brand.batchStatus || 'processing_content';
+  if (brand.batchId && !['idle', 'ready', 'failed'].includes(activeBatchStatus)) {
+    return {
+      skipped: 0,
+      created: 0,
+      batchStatus: brand.batchStatus,
+      batchId: brand.batchId,
+      strategy: brand.weeklyStrategy || [],
+      message: 'Weekly batch is already processing.',
+    };
+  }
+
+  const account = workspace.accounts.find(a => a.id === brand.accountId);
+  if (!account) throw new Error(`Account not found for brand ${brand.accountId}.`);
+
+  const { slots, skipped, weekStart, weekEnd } = getWeeklyBatchSlots({ workspace, account, brand, now });
+  if (!slots.length) {
+    brand.weeklyStrategy = [];
+    brand.batchId = null;
+    brand.batchStatus = 'ready';
+    brand.strategyGeneratedAt = new Date().toISOString();
+    brand.lastGeneratedAt = brand.strategyGeneratedAt;
+    return {
+      skipped,
+      created: 0,
+      batchStatus: brand.batchStatus,
+      batchId: null,
+      strategy: [],
+      weekStart,
+      weekEnd,
+      message: 'No missing weekly slots. Existing posts already cover the selected posting days.',
+    };
+  }
+
+  const strategyResponse = await anthropic.messages.create({
+    model: anthropicModel,
+    max_tokens: 1200,
+    system: `You are a world-class LinkedIn growth strategist. You analyze brand contexts and build 1-week high-impact content plans.`,
+    messages: [{ role: 'user', content: buildStrategyPrompt({ account, brand, slots }) }],
+  });
+
+  const strategy = enrichStrategyWithSlots(
+    extractJsonArray(strategyResponse.content?.[0]?.text || '[]'),
+    slots,
+    brand,
+  );
+
+  brand.weeklyStrategy = strategy;
+  brand.strategyGeneratedAt = new Date().toISOString();
+
+  const requests = strategy.map((item, idx) => ({
+    custom_id: `content_${brand.accountId}_${idx}`,
+    params: {
+      model: anthropicModel,
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: buildBatchGenerationPrompt({
+          account,
+          brand,
+          strategyItem: item,
+        }),
+      }],
+    },
+  }));
+
+  const batch = await submitAnthropicBatch(requests);
+  brand.batchId = batch.id;
+  brand.batchStatus = 'processing_content';
+  brand.lastGeneratedAt = brand.strategyGeneratedAt;
+
+  return {
+    skipped,
+    created: 0,
+    batchStatus: brand.batchStatus,
+    batchId: batch.id,
+    strategy,
+    weekStart,
+    weekEnd,
+    generatedAt: brand.strategyGeneratedAt,
+  };
+}
+
 function schedulerStatusFromWorkspace(workspace, now = new Date()) {
   const timezone = workspace.settings?.scheduler?.timezone || workspace.settings?.defaultTimezone || schedulerTimezone;
   const tomorrow = getTomorrowParts(timezone, now);
@@ -1125,7 +1405,7 @@ function schedulerStatusFromWorkspace(workspace, now = new Date()) {
   return {
     enabled: metadata.enabled !== false,
     timezone,
-    nextRunAt: metadata.nextRunAt || nextSchedulerRunIso(timezone, now),
+    nextRunAt: nextWeeklySchedulerRunIso(timezone, now),
     lastRunAt: metadata.lastRunAt || '',
     lastCreatedCount: metadata.lastCreatedCount || 0,
     lastSkippedCount: metadata.lastSkippedCount || 0,
@@ -1435,7 +1715,7 @@ app.post(['/api/strategy/generate', '/linkedin/api/strategy/generate'], async (r
 
     brand.weeklyStrategy = strategy;
     brand.strategyGeneratedAt = new Date().toISOString();
-    
+
     await saveWorkspace(workspace);
     res.json({ strategy, generatedAt: brand.strategyGeneratedAt });
   } catch (err) {
@@ -1446,6 +1726,7 @@ app.post(['/api/strategy/generate', '/linkedin/api/strategy/generate'], async (r
 
 app.post(['/api/strategy/batch-week', '/linkedin/api/strategy/batch-week'], async (req, res) => {
   const { accountId } = req.body;
+  console.log(`[BATCH] Received request for account: ${accountId}`);
   if (!accountId) return res.status(400).json({ error: 'accountId required' });
 
   const workspace = await loadWorkspace();
@@ -1455,51 +1736,11 @@ app.post(['/api/strategy/batch-week', '/linkedin/api/strategy/batch-week'], asyn
   if (!account || !brand) return res.status(404).json({ error: 'Account or brand not found' });
 
   try {
-    // 1. Generate Strategy
-    const strategyResponse = await anthropic.messages.create({
-      model: anthropicModel,
-      max_tokens: 1200,
-      system: `You are a world-class LinkedIn growth strategist. You analyze brand contexts and build 1-week high-impact content plans.`,
-      messages: [{ role: 'user', content: buildStrategyPrompt({ account, brand }) }],
-    });
-
-    const strategyText = strategyResponse.content?.[0]?.text || '[]';
-    const strategyJsonStr = strategyText.includes('[') ? strategyText.slice(strategyText.indexOf('['), strategyText.lastIndexOf(']') + 1) : '[]';
-    const strategy = JSON.parse(strategyJsonStr);
-
-    brand.weeklyStrategy = strategy;
-    brand.strategyGeneratedAt = new Date().toISOString();
-
-    // 2. Build Batch Requests for Content
-    const requests = strategy.map((item, idx) => {
-      return {
-        custom_id: `content_${accountId}_${idx}`,
-        params: {
-          model: anthropicModel,
-          max_tokens: 1000,
-          messages: [{
-            role: 'user',
-            content: buildGenerationPrompt({
-              account,
-              brand,
-              strategyItem: item
-            })
-          }]
-        }
-      };
-    });
-
-    // 3. Submit Batch
-    const batch = await submitAnthropicBatch(requests);
-    brand.batchId = batch.id;
-    brand.batchStatus = 'processing_content';
-
+    const run = await startWeeklyBatchForBrand(workspace, brand);
     await saveWorkspace(workspace);
     res.json({
-      strategy,
-      batchId: batch.id,
-      batchStatus: brand.batchStatus,
-      generatedAt: brand.strategyGeneratedAt
+      ...run,
+      generatedAt: brand.strategyGeneratedAt,
     });
   } catch (err) {
     console.error('Weekly Batch Planning failed:', err);
@@ -1527,27 +1768,43 @@ app.post(['/api/scheduler/generate-tomorrow', '/linkedin/api/scheduler/generate-
   }
 });
 
-// Daily scheduler: generate tomorrow's posts every morning at 5:00 AM IST.
-cron.schedule('0 5 * * *', async () => {
-  console.log('Running daily 5 AM LinkedIn scheduler...');
+// Weekly Batch Cron: Every Saturday at 8:00 AM IST
+cron.schedule('0 8 * * 6', async () => {
+  console.log('Starting Automated Weekly Batch Production (Saturday 8:00 AM IST)');
   const workspace = await loadWorkspace();
-  try {
-    const result = await generateTomorrowPosts(workspace);
-    await saveWorkspace(workspace);
-    console.log(`Daily scheduler complete. Created ${result.created}, skipped ${result.skipped}.`);
-  } catch (err) {
-    console.error('Daily scheduler failed:', err);
+  if (!workspace) return;
+
+  for (const brand of workspace.brandProfiles) {
+    console.log(`Auto-triggering weekly batch for: ${brand.brandName || brand.accountId} (${brand.accountId})`);
+    try {
+      const run = await startWeeklyBatchForBrand(workspace, brand);
+      console.log(`Weekly batch for ${brand.accountId}: ${run.batchStatus}, skipped ${run.skipped}, batch ${run.batchId || 'none'}`);
+      await saveWorkspace(workspace);
+    } catch (err) {
+      console.error(`Error initiating auto-batch for ${brand.accountId}:`, err);
+      brand.batchStatus = 'failed';
+      await saveWorkspace(workspace);
+    }
   }
+}, {
+  timezone: schedulerTimezone
+});
+
+/*
+cron.schedule('0 5 * * *', async () => {
+  // Disabling daily scheduler as we have moved to a high-fidelity Weekly Batch model.
+  // This prevents redundant token usage and ensures all posts follow the strategic plan.
 }, { timezone: schedulerTimezone });
+*/
 
 // Cron job: Check every minute for posts that need to be published
 cron.schedule('* * * * *', async () => {
   const workspace = await loadWorkspace();
   const now = new Date();
-  
-  const toPublish = workspace.posts.filter(p => 
-    p.status === 'scheduled' && 
-    p.scheduledAt && 
+
+  const toPublish = workspace.posts.filter(p =>
+    p.status === 'scheduled' &&
+    p.scheduledAt &&
     new Date(p.scheduledAt) <= now
   );
 
@@ -1609,17 +1866,35 @@ async function pollPendingBatches() {
         // Content batch finished -> Start Graphics batch
         const graphicsRequests = [];
         const account = workspace.accounts.find(a => a.id === brand.accountId);
-        
+        if (!account) {
+          brand.batchStatus = 'failed';
+          changed = true;
+          continue;
+        }
+
         for (const res of results) {
           if (res.result.type !== 'succeeded') continue;
-          
+
           const idx = parseInt(res.custom_id.split('_').pop());
           const strategyItem = brand.weeklyStrategy?.[idx];
           if (!strategyItem) continue;
+          if (hasExistingPostForSlot(
+            workspace,
+            brand.accountId,
+            strategyItem.targetDate,
+            strategyItem.scheduleSlotKey,
+            strategyItem.timezone || brand.timezone || workspace.settings?.defaultTimezone || schedulerTimezone,
+          )) {
+            continue;
+          }
 
           const text = res.result.message.content[0].text;
           const jsonStr = text.includes('{') ? text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1) : '{}';
           const generated = JSON.parse(jsonStr);
+
+          // Clean title and content if they have markdown backticks
+          if (generated.title) generated.title = cleanMarkdown(generated.title);
+          if (generated.content) generated.content = cleanMarkdown(generated.content);
 
           // Store content temporarily in strategyItem for the next step
           strategyItem.generatedContent = generated;
@@ -1630,6 +1905,7 @@ async function pollPendingBatches() {
             title: generated.title,
             content: generated.content,
             kicker: strategyItem.topic,
+            logoUrl: brand.logoUrl || workspace.settings.logoUrl,
             visualState: strategyItem.visualState,
             visualDirection: strategyItem.visualDirection,
           });
@@ -1638,7 +1914,7 @@ async function pollPendingBatches() {
             custom_id: `graphic_${brand.accountId}_${idx}`,
             params: {
               model: anthropicModel,
-              max_tokens: 1500,
+              max_tokens: 3500,
               messages: [{ role: 'user', content: graphicPrompt }]
             }
           });
@@ -1649,20 +1925,47 @@ async function pollPendingBatches() {
           brand.batchId = nextBatch.id;
           brand.batchStatus = 'processing_graphics';
         } else {
-          brand.batchStatus = 'failed';
+          brand.batchId = null;
+          brand.batchStatus = 'ready';
         }
         changed = true;
       } else if (brand.batchStatus === 'processing_graphics') {
         // Graphics batch finished -> Create Posts
+        let createdCount = 0;
         for (const res of results) {
           if (res.result.type !== 'succeeded') continue;
-          
+
           const idx = parseInt(res.custom_id.split('_').pop());
           const strategyItem = brand.weeklyStrategy?.[idx];
           if (!strategyItem || !strategyItem.generatedContent) continue;
+          const timeZone = strategyItem.timezone || brand.timezone || workspace.settings?.defaultTimezone || schedulerTimezone;
+          if (hasExistingPostForSlot(
+            workspace,
+            brand.accountId,
+            strategyItem.targetDate,
+            strategyItem.scheduleSlotKey,
+            timeZone,
+          )) {
+            continue;
+          }
 
-          const html = res.result.message.content[0].text;
-          
+          let html = normalizeGraphicHtml(res.result.message.content[0].text);
+          if (!(html.includes('<html') || html.includes('<!doctype html')) || !hasVisiblePosterText(html)) {
+            const account = workspace.accounts.find(a => a.id === brand.accountId);
+            const accountHandle = account?.linkedInUrl
+              ? account.linkedInUrl.replace(/\/$/, '').split('/').pop() || account.name
+              : account?.name || '';
+            html = createHtmlAsset(
+              strategyItem.generatedContent.title,
+              strategyItem.generatedContent.content,
+              brand.imageStyle || strategyItem.topic || 'Featured',
+              brand.logoUrl || workspace.settings.logoUrl,
+              account?.type !== 'person',
+              account?.name || '',
+              accountHandle,
+            );
+          }
+
           const post = {
             id: `post_${Date.now()}_${brand.accountId}_${idx}`,
             accountId: brand.accountId,
@@ -1672,17 +1975,23 @@ async function pollPendingBatches() {
             cta: brand.ctaStyle || '',
             hashtags: brand.hashtags || [],
             htmlAsset: html,
-            status: 'draft',
-            scheduledAt: new Date(Date.now() + idx * 24 * 60 * 60 * 1000).toISOString(), // Roughly spaced out
+            status: 'scheduled',
+            scheduledAt: strategyItem.scheduledAt,
+            generatedAt: new Date().toISOString(),
+            scheduleSlotKey: strategyItem.scheduleSlotKey,
+            generationSource: 'weekly_batch_scheduler',
             metrics: { impressions: 0, reactions: 0, comments: 0, clicks: 0, shares: 0 },
-            notes: 'Generated via Sunday Weekly Batch.',
+            notes: 'Generated via weekly Claude batch.',
             retryCount: 0,
             createdAt: new Date().toISOString(),
           };
-          workspace.posts.push(post);
+          workspace.posts = [post, ...(workspace.posts || [])];
+          createdCount += 1;
         }
         brand.batchId = null;
         brand.batchStatus = 'ready';
+        brand.lastGeneratedAt = new Date().toISOString();
+        console.log(`Weekly graphics batch completed for ${brand.accountId}; scheduled ${createdCount} posts.`);
         changed = true;
       }
     } catch (err) {

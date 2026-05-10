@@ -36,6 +36,7 @@ export default function App() {
     kind: 'post' | 'delete';
     postId: string;
   } | null>(null);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<{ id: string; message: string }[]>([]);
 
   const notify = (message: string) => {
@@ -468,16 +469,16 @@ export default function App() {
 
         {page === 'scheduler' && (
           <section className="page-grid" style={{ gridTemplateColumns: '1fr' }}>
-            <Panel title="Daily Scheduler" description="Automatically prepares tomorrow’s LinkedIn posts every morning at 5:00 AM IST.">
+            <Panel title="Weekly Content Scheduler" description="Automatically plans and batches next Monday-Sunday LinkedIn posts every Saturday at 8:00 AM IST.">
               <div className="kpi-grid">
-                <Kpi label="Daily scheduler" value={schedulerStatus?.enabled ? 'On' : 'Off'} />
-                <Kpi label="Next run" value={schedulerStatus?.nextRunAt ? prettyDate(schedulerStatus.nextRunAt) : '5:00 AM IST'} />
-                <Kpi label="Tomorrow posts" value={schedulerStatus?.postsDueTomorrow ?? 0} />
-                <Kpi label="Last created" value={schedulerStatus?.lastCreatedCount ?? 0} />
+                <Kpi label="Weekly batch" value={schedulerStatus?.enabled ? 'On' : 'Off'} />
+                <Kpi label="Next check" value={schedulerStatus?.nextRunAt ? prettyDate(schedulerStatus.nextRunAt) : 'Scheduled'} />
+                <Kpi label="Due tomorrow" value={schedulerStatus?.postsDueTomorrow ?? 0} />
+                <Kpi label="Last generated" value={schedulerStatus?.lastCreatedCount ?? 0} />
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', marginTop: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div className="muted-text">
-                  Tomorrow: {schedulerStatus?.tomorrowDate || 'calculating'} · Last run: {schedulerStatus?.lastRunAt ? prettyDate(schedulerStatus.lastRunAt) : 'Not run yet'}
+                  Next publish date: {schedulerStatus?.tomorrowDate || 'calculating'} · Last generation: {schedulerStatus?.lastRunAt ? prettyDate(schedulerStatus.lastRunAt) : 'Not run yet'}
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button className="btn btn-secondary" style={{ border: '1px solid #10b981', color: '#059669' }} onClick={async () => {
@@ -601,6 +602,13 @@ export default function App() {
                               <button
                                 className="btn btn-secondary"
                                 style={{ padding: '6px 12px', fontSize: '12px' }}
+                                onClick={() => setEditingPostId(post.id)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                className="btn btn-secondary"
+                                style={{ padding: '6px 12px', fontSize: '12px' }}
                                 disabled={publishingIds.includes(post.id) || post.status === 'publishing'}
                                 onClick={() => setConfirmAction({ kind: 'post', postId: post.id })}
                               >
@@ -711,6 +719,21 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {editingPostId && (
+        <EditPostModal
+          post={workspace.posts.find(p => p.id === editingPostId)!}
+          onClose={() => setEditingPostId(null)}
+          onSave={updates => {
+            setWorkspace(current => ({
+              ...current,
+              posts: current.posts.map(p => p.id === editingPostId ? { ...p, ...updates } : p)
+            }));
+            setEditingPostId(null);
+            notify('Post updated.');
+          }}
+        />
       )}
 
       {confirmAction && (
@@ -915,4 +938,35 @@ function prettyDate(value: string): string {
         hour: 'numeric',
         minute: '2-digit',
       }).format(date);
+}
+function EditPostModal({ post, onClose, onSave }: { post: PostDraft; onClose: () => void; onSave: (updates: Partial<PostDraft>) => void }) {
+  const [title, setTitle] = useState(post.title);
+  const [content, setContent] = useState(post.content);
+  const [date, setDate] = useState(post.scheduledAt.split('T')[0]);
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Edit post">
+      <div className="modal" style={{ maxWidth: '600px' }}>
+        <header>
+          <h3>Edit Post Refinement</h3>
+          <p>Modify the AI-generated draft before publication.</p>
+        </header>
+        <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <Field label="Post Title / Theme">
+            <input value={title} onChange={e => setTitle(e.target.value)} />
+          </Field>
+          <Field label="Post Content (Draft)">
+            <textarea style={{ height: '200px' }} value={content} onChange={e => setContent(e.target.value)} />
+          </Field>
+          <Field label="Scheduled Date">
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </Field>
+        </div>
+        <footer>
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => onSave({ title, content, scheduledAt: `${date}T09:00:00.000Z` })}>Save Changes</button>
+        </footer>
+      </div>
+    </div>
+  );
 }
