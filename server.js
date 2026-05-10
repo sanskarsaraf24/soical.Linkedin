@@ -126,27 +126,42 @@ function getBrandPalette(accountName = '', visualState = '') {
   const name = accountName.toLowerCase();
   
   if (name.includes('casemate')) {
-    if (visualState === 'WARM OFF-WHITE') {
-      return { bg: '#F5F3EF', accent: '#1D4ED8', text: '#334155', surface: '#FFFFFF' };
+    // Casemate: Navy, Brass, Cream, Royal, Slate
+    if (visualState === 'LIGHT') {
+      return { bg: '#FDFCF7', accent: '#C5A059', text: '#0F172A', secondary: '#1D4ED8', detail: '#94A3B8' };
     }
-    return { bg: '#0F172A', accent: '#1D4ED8', text: '#FFFFFF', surface: '#1E293B' };
+    return { bg: '#0F172A', accent: '#C5A059', text: '#FDFCF7', secondary: '#1D4ED8', detail: '#94A3B8' };
   }
   
   if (name.includes('minpay')) {
-    if (visualState === 'TEAL') {
-      return { bg: '#143D45', accent: '#47A48B', text: '#FFFFFF', surface: '#1A4D57' };
+    // MinPay: Teal, Mint, White, Trust Blue, Cool Gray
+    if (visualState === 'DARK') {
+      return { bg: '#143D45', accent: '#47A48B', text: '#FFFFFF', secondary: '#3B82F6', detail: '#F4F6F8' };
     }
-    return { bg: '#FFFFFF', accent: '#47A48B', text: '#143D45', surface: '#F8FAFC' };
+    return { bg: '#FFFFFF', accent: '#47A48B', text: '#143D45', secondary: '#3B82F6', detail: '#F4F6F8' };
   }
   
   if (name.includes('sanskar') || name.includes('founder') || name.includes('saraf')) {
-    if (visualState === 'INDIGO ACCENT') {
-      return { bg: '#4F46E5', accent: '#FFFFFF', text: '#FFFFFF', surface: '#6366F1' };
+    // Saraf & Co: Midnight, Indigo, Pearl, Steel, Onyx
+    if (visualState === 'DARK') {
+      return { bg: '#1E1B4B', accent: '#4F46E5', text: '#F8FAFC', secondary: '#94A3B8', detail: '#0F172A' };
     }
-    return { bg: '#F8F6F1', accent: '#4F46E5', text: '#1F2937', surface: '#FFFFFF' };
+    return { bg: '#F8FAFC', accent: '#4F46E5', text: '#111827', secondary: '#94A3B8', detail: '#4338CA' };
   }
   
-  return { bg: '#FFFFFF', accent: '#3B82F6', text: '#1F2937', surface: '#F3F4F6' };
+  return { bg: '#FFFFFF', accent: '#3B82F6', text: '#1F2937', secondary: '#6366F1', detail: '#F3F4F6' };
+}
+
+function getNextVisualStateForAccount(workspace, account, brand, offset = 0) {
+  const accountId = account.id;
+  const recentPosts = (workspace.posts || [])
+    .filter(p => p.accountId === accountId && p.status !== 'failed')
+    .sort((a, b) => new Date(b.scheduledAt || 0).getTime() - new Date(a.scheduledAt || 0).getTime())
+    .slice(0, 1);
+  
+  const lastState = recentPosts[0]?.visualState;
+  // Strictly alternate: if last was DARK, next is LIGHT
+  return lastState === 'DARK' ? 'LIGHT' : 'DARK';
 }
 
 async function generateGraphicSummary(postContent) {
@@ -1354,15 +1369,17 @@ async function generateGraphicHtml({ account, brand, title, content, kicker, log
 The CANVAS is 1080x1080px edge-to-edge.
 You MUST use these EXACT colors:
 - Background: ${palette.bg}
-- Accent: ${palette.accent}
+- Main Accent: ${palette.accent}
 - Primary Text: ${palette.text}
-- Surface/Card: ${palette.surface}
+- Secondary Accent: ${palette.secondary}
+- Detail/Grid: ${palette.detail}
 
 CONSTRAINTS:
 - Use layout archetype: ${layoutArchetype}
 - NO ROUNDED CORNERS: border-radius: 0 always.
 - MINIMAL CONTENT: Use the provided summary, not the full post.
-- NO OVERLAP: Ensure text is always visible and high contrast.`,
+- VISUAL DEPTH: Use the 'Detail/Grid' color for subtle 1px grid underlays (opacity 0.05) or vertical border lines to create an architectural feel.
+- MICRO-BRANDING: Use the 'Secondary Accent' for small labels, the kicker, or bullet point markers.`,
         messages: [{
           role: 'user',
           content: buildGraphicPrompt({
