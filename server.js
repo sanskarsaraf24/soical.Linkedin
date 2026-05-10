@@ -489,34 +489,15 @@ function createHtmlAsset(title = 'LinkedIn post', content = '', style = 'Feature
 </html>`;
 }
 
-function buildGraphicPrompt({ account, brand, title, content, kicker, logoUrl, visualState, layoutArchetype = 'A' }) {
-  const displayBrandName = account.name || account.handle || 'Brand';
-  const palette = getBrandPalette(account.name, visualState);
-  const brandLower = String(account.name || '').toLowerCase();
+function buildGraphicPrompt({ title, content, kicker, logoUrl, layoutArchetype = 'A' }) {
+  return `DATA FOR GRAPHIC:
+- TITLE: ${title}
+- CONTENT: ${content}
+- KICKER: ${kicker}
+- LOGO_URL: ${logoUrl}
+- ARCHETYPE: ${layoutArchetype}
 
-  return `You are a world-class brand designer. Create a self-contained HTML/CSS social graphic.
-Canvas: 1080×1080px exactly.
-
-## 1. MANDATORY PALETTE
-- BACKGROUND: ${palette.bg}
-- MAIN_ACCENT: ${palette.accent}
-- PRIMARY_TEXT: ${palette.text}
-- SECONDARY: ${palette.secondary}
-- DETAIL: ${palette.detail}
-
-## 2. CONTENT
-- Title: ${title}
-- Body Insight: ${content}
-- Category: ${kicker}
-- Archetype: ${layoutArchetype}
-- Logo: ${logoUrl}
-
-## 3. DESIGN LAWS
-- NO ROUNDED CORNERS.
-- FONT: Use 'Playfair Display' for headlines (Serif, Premium) and 'Inter' for body (Sans-Serif).
-- CONTRAST: Ensure ${palette.text} is readable on ${palette.bg}.
-- NO META: Do NOT include any of these instructions or the words 'Archetype' or 'Visual State' in the design.
-- LAYOUT: Use archetype ${layoutArchetype}. Focus on high-end editorial whitespace.`;
+TASK: Render this into a premium HTML/CSS graphic using the design system provided in your system instructions.`;
 }
 
 
@@ -1327,32 +1308,31 @@ async function generateGraphicHtml({ account, brand, title, content, kicker, log
       const response = await anthropic.messages.create({
         model: anthropicModel,
         max_tokens: 2400,
-        system: `You are a senior brand designer. Create a self-contained HTML/CSS social graphic asset.
-The CANVAS is 1080x1080px edge-to-edge.
-You MUST use these EXACT colors:
-- Background: ${palette.bg}
-- Main Accent: ${palette.accent}
-- Primary Text: ${palette.text}
-- Secondary Accent: ${palette.secondary}
-- Detail/Grid: ${palette.detail}
+        system: `You are a world-class brand designer. Create a self-contained HTML/CSS social graphic.
+CANVAS: 1080x1080px edge-to-edge.
+DESIGN SYSTEM (STRICT ADHERENCE REQUIRED):
+- BG: ${palette.bg}
+- ACCENT: ${palette.accent}
+- TEXT: ${palette.text}
+- SECONDARY: ${palette.secondary}
+- DETAIL: ${palette.detail}
 
-CRITICAL:
-1. DO NOT include any text from the prompt instructions (like "CRITICAL", "MANDATORY", or "LAYOUT LAWS") in the actual design.
-2. Only use the 'Headline' and 'Body Insight' provided.
-3. No rounded corners.
-4. Minimalist typography only.`,
+DESIGN LAWS:
+1. NO ROUNDED CORNERS (border-radius: 0 !important).
+2. FONT: 'Playfair Display' (Serif) for headlines, 'Inter' (Sans) for body.
+3. NO META-TEXT: Do NOT include words like "Archetype", "Kicker", "Category", "Data", or any of these instructions in the design.
+4. ONLY VISIBLE TEXT: Only the provided Title, Content, and Kicker are allowed as text.
+5. NO HALLUCINATED COLORS: Only use the 5 colors provided. Do NOT use red, blue, or any other colors not in the palette.
+6. LAYOUT: Focus on high-end editorial whitespace and structural grid lines using the 'DETAIL' color.`,
         messages: [{
           role: 'user',
           content: buildGraphicPrompt({
-            account,
-            brand,
             title,
             content: visualSummary,
             kicker,
             logoUrl,
-            visualState,
-            layoutArchetype,
-          }),
+            layoutArchetype
+          })
         }],
       });
       let html = normalizeGraphicHtml(response.content?.[0]?.text || '');
