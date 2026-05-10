@@ -539,29 +539,6 @@ export default function App() {
                   {activeBrand.batchStatus === 'ready' && <button className="btn btn-secondary" style={{ marginLeft: 'auto', padding: '4px 8px', fontSize: '12px' }} onClick={() => updateBrandProfile(activeAccountId, { batchStatus: 'idle' })}>Dismiss</button>}
                 </div>
               )}
-              {!!activeBrand.weeklyStrategy?.length && (
-                <div className="strategy-summary" style={{ marginTop: '24px' }}>
-                  <header style={{ marginBottom: '16px' }}>
-                    <span className="eyebrow">AI Content Brain</span>
-                    <h4>Weekly Strategy Plan</h4>
-                  </header>
-                  <div className="strategy-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
-                    {activeBrand.weeklyStrategy.map((item, i) => (
-                      <div key={i} className="strategy-card" style={{ background: 'var(--panel-bg)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                          <strong style={{ fontSize: '14px', color: 'var(--primary-color)' }}>{item.day}</strong>
-                          <span style={{ fontSize: '11px', background: 'rgba(0,0,0,0.05)', padding: '2px 8px', borderRadius: '4px' }}>{item.visualState}</span>
-                        </div>
-                        <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '4px' }}>{item.topic}</div>
-                        <div className="muted-text" style={{ fontSize: '13px', fontStyle: 'italic' }}>"{item.hook}"</div>
-                        <div style={{ fontSize: '12px', marginTop: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '8px', color: 'var(--text-secondary)' }}>
-                          <strong>Visual:</strong> {item.visualDirection}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
               {!!schedulerStatus?.lastErrors?.length && (
                 <div className="error-box" style={{ marginTop: '16px' }}>
                   {schedulerStatus.lastErrors.join('\n')}

@@ -1057,7 +1057,16 @@ JSON Structure:
 function extractJsonArray(text = '') {
   const raw = String(text || '');
   const jsonStr = raw.includes('[') ? raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1) : '[]';
-  return JSON.parse(jsonStr);
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.warn('Failed to parse strategy JSON; falling back to slot defaults.', {
+      error: err instanceof Error ? err.message : String(err),
+      preview: raw.slice(0, 400),
+    });
+    return [];
+  }
 }
 
 function cleanGeneratedText(value = '') {
