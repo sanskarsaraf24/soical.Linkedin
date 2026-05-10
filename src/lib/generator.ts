@@ -8,6 +8,11 @@ function pick<T>(items: T[], index: number): T {
   return items[index % items.length];
 }
 
+function normalizeLayoutArchetype(value: string): 'A' | 'B' | 'C' | 'D' {
+  const archetype = String(value || 'A').trim().toUpperCase();
+  return archetype === 'B' || archetype === 'C' || archetype === 'D' ? archetype : 'A';
+}
+
 /**
  * Derive a brand accent color from image style description.
  * Supports named colors and hex values embedded in the style string.
@@ -59,6 +64,7 @@ function buildHtmlAsset(
   authorName: string,
   authorHandle: string,
   logoUrl = '',
+  layoutArchetype = 'A',
 ): string {
   // Use a clean sentence from content as the supporting line
   const supportingLine = String(content || '')
@@ -69,6 +75,10 @@ function buildHtmlAsset(
     .find(Boolean)
     ?.slice(0, 120) || '';
 
+  const archetype = normalizeLayoutArchetype(layoutArchetype);
+  const isCentered = archetype === 'B';
+  const isStatement = archetype === 'C';
+  const isData = archetype === 'D';
   const isMinpay = accent.toLowerCase() === '#47a48b' && surface.toLowerCase() === '#f4f6f8';
   const isDark = surface.includes('#0') || surface.includes('dark') || surface.includes('night');
   const textPrimary = isMinpay ? '#143D45' : isDark ? '#f1f5f9' : '#0f172a';
@@ -124,7 +134,7 @@ function buildHtmlAsset(
         flex: 1;
         background: ${cardBg};
         border-radius: ${isMinpay ? '0' : '48px'};
-        padding: 96px;
+        padding: ${isCentered ? '90px 84px' : isData ? '88px 92px' : '96px'};
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -144,7 +154,7 @@ function buildHtmlAsset(
         padding: 12px 28px;
         border-radius: ${isMinpay ? '0' : '40px'};
         margin-bottom: 64px;
-        align-self: flex-start;
+        align-self: ${isCentered ? 'center' : 'flex-start'};
       }
       .headline {
         font-family: '${headingFont}', sans-serif;
@@ -154,7 +164,8 @@ function buildHtmlAsset(
         font-weight: 700;
         color: ${textPrimary};
         margin: 0;
-        max-width: 900px;
+        max-width: ${isCentered ? '840px' : '900px'};
+        text-align: ${isCentered ? 'center' : 'left'};
       }
       .accent-line {
         width: 80px;
@@ -162,26 +173,32 @@ function buildHtmlAsset(
         background: ${accent};
         border-radius: 3px;
         margin: 56px 0;
+        ${isCentered ? 'margin-left: auto; margin-right: auto;' : ''}
       }
       .supporting {
-        font-family: 'Inter', sans-serif;
+        font-family: '${bodyFont}', sans-serif;
         font-size: 36px;
         line-height: 1.5;
         color: ${textSecondary};
         margin: 0;
-        max-width: 820px;
+        max-width: ${isCentered ? '760px' : '820px'};
         font-weight: 400;
+        text-align: ${isCentered ? 'center' : 'left'};
+        ${isStatement ? 'font-style: italic;' : ''}
       }
       .footer {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-top: 56px;
+        ${isCentered ? 'gap: 20px; justify-content: center;' : ''}
+        ${isData ? 'align-items: flex-end;' : ''}
       }
-      .author {
+        .author {
         display: flex;
         flex-direction: column;
         gap: 6px;
+        ${isCentered ? 'align-items: center;' : ''}
       }
       .author-name {
         font-family: '${headingFont}', sans-serif;
@@ -232,6 +249,7 @@ export function generatePostDraft(account: LinkedInAccount, brand: BrandProfile,
   const hashtags = Array.from(new Set([...brand.hashtags, `#${slugify(pillar)}`].filter(Boolean))).slice(0, 6);
   const accent = deriveAccent(brand.imageStyle || '');
   const surface = deriveSurface(brand.imageStyle || '');
+  const layoutArchetype = pick(['A', 'B', 'C', 'D'], index);
   // Use the pillar as the graphic kicker (human-readable, brand-specific)
   const kicker = pillar;
   const authorHandle = account.linkedInUrl
@@ -250,6 +268,7 @@ export function generatePostDraft(account: LinkedInAccount, brand: BrandProfile,
     account.name,
     `LinkedIn · ${authorHandle}`,
     logoUrl,
+    layoutArchetype,
   );
 
   return {
@@ -264,7 +283,7 @@ export function generatePostDraft(account: LinkedInAccount, brand: BrandProfile,
     scheduledAt: new Date(Date.now() + index * 86400000).toISOString(),
     status: 'scheduled',
     metrics: { impressions: 0, reactions: 0, comments: 0, clicks: 0, shares: 0 },
-    notes: `Generated from ${brand.tone} / ${brand.imageStyle} profile.`,
+    notes: `Generated from ${brand.tone} / ${brand.imageStyle} profile. Layout archetype ${layoutArchetype}.`,
   };
 }
 

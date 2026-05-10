@@ -49,6 +49,48 @@ const MINPAY_IMAGE_STYLE = [
   'Avoid: navy/charcoal-heavy palettes not in the kit, emerald substitutes, purple/blue startup gradients, rounded pill-heavy UI, playful illustrations, fear-based debt imagery, stock-photo people, clutter, tiny text, and any promise of guaranteed settlement outcomes.'
 ].join(' ');
 
+const CASEMATE_IMAGE_STYLE = [
+  'Casemate AI brand kit. Colors: Deep Navy #0F172A, Royal Blue #1D4ED8, Warm Off-White #F5F3EF, Slate Grey #334155, and Deep Emerald #065F46 only for success states.',
+  'Typography: Playfair Display for headlines, Inter for body, JetBrains Mono for citations or references. Keep the tone court-ready, precise, and disciplined.',
+  'Visual language: legal-tech, source-verified, structured, and institutional. Use squared layouts, thin borders, document-style panels, and calm whitespace.',
+  'Layout states to rotate: Citation Authority, Two-Column Brief, Vertical Authority, Grid Reference. Do not repeat the same framing every post.',
+  'Avoid: playful illustrations, startup gradients, rounded pill-heavy styling, stock imagery, neon accents, and generic AI branding.'
+].join(' ');
+
+const PERSONAL_IMAGE_STYLE = [
+  'Founder brand visual kit. Colors: Indigo #4F46E5, Off-White #F8F6F1, Charcoal #1F2937, Muted Grey #6B7280.',
+  'Typography: Manrope Bold for headlines, Inter for supporting text. Keep the voice crisp, practical, and reflective.',
+  'Visual language: editorial but restrained, with clear hierarchy, ample whitespace, subtle dividers, and no decorative clutter.',
+  'Layout states to rotate: Bold Left Headline, Magazine Spread, Quote Statement, Data Insight. Each post should feel distinct.',
+  'Avoid: gradients, noisy textures, rounded card-heavy design, and filler decoration.'
+].join(' ');
+
+const LAYOUT_ARCHETYPES = ['A', 'B', 'C', 'D'];
+
+function normalizeLayoutArchetype(value = 'A') {
+  const archetype = String(value || 'A').trim().toUpperCase();
+  return LAYOUT_ARCHETYPES.includes(archetype) ? archetype : 'A';
+}
+
+function pickLayoutArchetype(index = 0) {
+  return LAYOUT_ARCHETYPES[index % LAYOUT_ARCHETYPES.length];
+}
+
+function getNextLayoutArchetypeForAccount(workspace, accountId) {
+  const count = (workspace.posts || []).filter(post => post.accountId === accountId).length;
+  return pickLayoutArchetype(count);
+}
+
+function isCasemateAccount(account = {}) {
+  return String(account.name || account.handle || '').toLowerCase().includes('casemate');
+}
+
+function getDefaultBrandImageStyle(account = {}) {
+  if (isMinpayAccount(account)) return MINPAY_IMAGE_STYLE;
+  if (isCasemateAccount(account)) return CASEMATE_IMAGE_STYLE;
+  return PERSONAL_IMAGE_STYLE;
+}
+
 function trimContext(text, maxLength = 600) {
   if (!text || text.length <= maxLength) return text;
   return text.substring(0, maxLength) + '...';
@@ -277,7 +319,7 @@ function createMinpayHtmlAsset(title = 'LinkedIn post', content = '', kicker = '
 </html>`;
 }
 
-function createHtmlAsset(title = 'LinkedIn post', content = '', style = 'Featured', logoUrl = '', showFooter = false, accountName = '', accountHandle = '') {
+function createHtmlAsset(title = 'LinkedIn post', content = '', style = 'Featured', logoUrl = '', showFooter = false, accountName = '', accountHandle = '', layoutArchetype = 'A') {
   const styleText = String(style || '');
   if (styleText.toLowerCase().includes('minpay') || styleText.toLowerCase().includes('#143d45')) {
     return createMinpayHtmlAsset(title, content, 'Debt resolution', logoUrl, showFooter, accountName, accountHandle);
@@ -344,9 +386,11 @@ function createHtmlAsset(title = 'LinkedIn post', content = '', style = 'Feature
 </html>`;
 }
 
-function buildGraphicPrompt({ account, brand, title, content, kicker, logoUrl, visualDirection, visualState }) {
+function buildGraphicPrompt({ account, brand, title, content, kicker, logoUrl, visualDirection, visualState, layoutArchetype = 'A' }) {
   const displayBrandName = brand.brandName || account.name;
   const captionLine = String(content || '').split('\n').find(Boolean)?.slice(0, 160) || '';
+  const archetype = normalizeLayoutArchetype(layoutArchetype);
+  const layoutBrief = getGraphicArchetypeBrief({ account, layoutArchetype: archetype });
 
   return `You are a senior brand designer and frontend engineer. Create a premium LinkedIn square graphic (1080x1080px) as a single self-contained HTML document.
 
@@ -366,6 +410,8 @@ For example, if the state is "WARM OFF-WHITE", your background MUST be off-white
 
 ## LAYOUT
 Use the layout direction from the brand guide or strategy.
+Layout archetype: **${archetype}**
+Archetype brief: ${layoutBrief}
 Direction: ${visualDirection || 'Choose a layout that fits the brand guide and the content.'}
 
 ## DESIGN TOKENS (Recommended Baseline)
@@ -414,6 +460,7 @@ h1 {
 - Use the fonts specified in the brand guide. If none are specified, use Google Fonts: Playfair Display for headings and Inter for body.
 - Do not use decorative gradient backgrounds unless the brand guide explicitly asks for them.
 - Keep the design inside the 1080x1080 canvas with generous margins. Do not crop the logo or text.
+- Do not reuse the same visual framing across consecutive posts; respect the assigned archetype.
 - Add data-required="headline" to the h1 and data-required="subheadline" to the supporting sentence.
 - Output only valid complete HTML/CSS from <!doctype html>.`;
 }
@@ -494,9 +541,9 @@ function createInitialWorkspace() {
       aboutCompany: 'Personal founder brand focused on AI operators, shipping lessons, and product strategy.',
       voice: 'Founder-led, sharp, practical, reflective',
         tone: 'educational',
-        contentPillars: ['AI operators', 'builder lessons', 'product strategy'],
-        hashtags: ['#AI', '#BuildInPublic', '#Founder'],
-        imageStyle: 'gradient',
+      contentPillars: ['AI operators', 'builder lessons', 'product strategy'],
+      hashtags: ['#AI', '#BuildInPublic', '#Founder'],
+      imageStyle: PERSONAL_IMAGE_STYLE,
         writingStyle: 'Short hooks, clean paragraphs, useful takeaways',
         contentThemes: ['operator notes', 'shipping lessons', 'market observations'],
         ctaStyle: 'Ask for a thoughtful reply',
@@ -512,7 +559,7 @@ function createInitialWorkspace() {
         tone: 'professional',
         contentPillars: ['debt resolution education', 'recovery call handling', 'legal settlement process', 'borrower expectations', 'qualification clarity'],
         hashtags: ['#DebtResolution', '#LoanSettlement', '#FinancialStress'],
-        imageStyle: MINPAY_IMAGE_STYLE,
+      imageStyle: MINPAY_IMAGE_STYLE,
         writingStyle: 'Short, clear, empathetic, and controlled. Explain the process at a high level, set realistic expectations, and avoid sounding sales-heavy. Never overpromise outcomes.',
         contentThemes: ['recovery pressure', 'credit card and personal loan dues', 'structured settlement support', 'lender communication', 'client qualification', 'documentation and process clarity'],
         ctaStyle: 'Invite users to check eligibility or speak with the team without promising results.',
@@ -528,7 +575,7 @@ function createInitialWorkspace() {
         tone: 'professional',
         contentPillars: ['structured legal drafting', 'source-strict research', 'case-centric workspace', 'hearing calendar and alerts', 'professional responsibility'],
         hashtags: ['#LegalAI', '#IndianLitigation', '#LegalTech'],
-        imageStyle: 'Primary colors: Deep Navy #0F172A, Muted Royal Blue #1D4ED8, Warm Off-White #F5F3EF. Accent: Slate Grey #334155, Deep Emerald #065F46 only for success states. Typography: Playfair Display for headings, Inter for body, JetBrains Mono for citations. Visual language: minimalist, high whitespace, subtle borders, flat document-style UI, thin divider lines, soft shadows, squared card corners, navy primary buttons with white text. Avoid neon accents, purple tones, startup-style gradients, stock imagery, playful visuals, and rounded pill-heavy styling.',
+      imageStyle: CASEMATE_IMAGE_STYLE,
         writingStyle: 'Precise, legal, structured, and specific to Indian litigation workflows. Emphasize court-ready drafting, verified citations, confidentiality, advocate control, and refusal to fabricate sources.',
         contentThemes: ['court-ready drafting', 'verified Indian case law', 'matter organisation', 'generic AI limitations', 'advocate control', 'confidentiality', 'hearing discipline'],
         ctaStyle: 'Invite advocates to start a 14-day free trial or see how the workflow works.',
@@ -568,18 +615,50 @@ function normalizeBrandImageStyleForAccount(account, imageStyle, fallbackStyle) 
   const style = imageStyle || fallbackStyle || '';
   const lower = String(style).toLowerCase();
   if (
-    isMinpayAccount(account)
+    (isMinpayAccount(account) || isCasemateAccount(account) || String(account.name || account.handle || '').toLowerCase().includes('founder'))
     && (
       !style
-      || !lower.includes('#143d45')
-      || lower.includes('navy')
-      || lower.includes('dark slate')
-      || lower.includes('emerald')
+      || (isMinpayAccount(account) && (!lower.includes('#143d45') || !lower.includes('#47a48b') || lower.includes('navy') || lower.includes('dark slate') || lower.includes('emerald')))
+      || (isCasemateAccount(account) && (!lower.includes('#0f172a') || !lower.includes('#1d4ed8') || lower.includes('rounded pill')))
     )
   ) {
-    return MINPAY_IMAGE_STYLE;
+    return getDefaultBrandImageStyle(account);
   }
   return style;
+}
+
+function getGraphicArchetypeBrief({ account, layoutArchetype = 'A' }) {
+  const archetype = normalizeLayoutArchetype(layoutArchetype);
+  const isMinpay = isMinpayAccount(account);
+  const isCasemate = isCasemateAccount(account);
+
+  if (isMinpay) {
+    const briefs = {
+      A: 'Checklist/Process. Use a left deep-teal panel with white kicker and 2-3 mint checkmarks. Keep the right side white with a large headline and supporting sentence. The composition should feel like a trusted consultation summary.',
+      B: 'Sidebar Authority. Use a mint sidebar or top band for the label, then a wide white content area with a strong headline and one short supporting line. Keep the structure calm, direct, and well-spaced.',
+      C: 'Focused Statement. Place the kicker top-left with a mint vertical rule, center the headline, and keep supporting text short and disciplined. The page should feel composed, not promotional.',
+      D: 'Data + Trust. Use a prominent stat or statement block with a mint accent bar, then a supporting trust line below. Keep any supporting boxes squared, minimal, and process-oriented.',
+    };
+    return briefs[archetype];
+  }
+
+  if (isCasemate) {
+    const briefs = {
+      A: 'Citation/Authority. Use a left border or rail, a large authoritative headline, and a small monospace reference line or citation block. The layout should feel court-ready and precise.',
+      B: 'Two-Column Brief. Use a dark left column and an off-white right column, with the headline on one side and the supporting argument on the other. Keep the divider thin and intentional.',
+      C: 'Vertical Authority. Use a narrow navy panel on the left and a larger content field on the right. The overall tone should feel institutional and disciplined.',
+      D: 'Grid Reference. Use a centered kicker and headline with 3 small reference boxes below. This should read like a structured legal framework, not a marketing card.',
+    };
+    return briefs[archetype];
+  }
+
+  const briefs = {
+    A: 'Bold Left Headline. Use a two-column or asymmetric composition with the headline dominating the left side and a visual accent on the right. Keep the page editorial and crisp.',
+    B: 'Magazine Spread. Center the kicker, let the headline occupy most of the canvas, and add one geometric accent only if it supports balance. Keep the composition airy and premium.',
+    C: 'Quote/Statement. Use a centered statement layout with a thin divider and a short supporting line. The page should feel reflective and concise.',
+    D: 'Data/Insight Focus. Build a structured grid with 2-3 compact insight boxes or stat chips supporting the headline. Avoid decorative clutter.',
+  };
+  return briefs[archetype];
 }
 
 function normalizeWorkspace(workspace) {
@@ -1133,7 +1212,7 @@ function hasVisiblePosterText(html = '') {
   );
 }
 
-async function generateGraphicHtml({ account, brand, title, content, kicker, logoUrl }) {
+async function generateGraphicHtml({ account, brand, title, content, kicker, logoUrl, layoutArchetype = 'A' }) {
   if (anthropic) {
     try {
       const response = await anthropic.messages.create({
@@ -1150,7 +1229,8 @@ async function generateGraphicHtml({ account, brand, title, content, kicker, log
             kicker,
             logoUrl,
             visualDirection: brand.visualDirection,
-            visualState: brand.visualState
+            visualState: brand.visualState,
+            layoutArchetype,
           }),
         }],
       });
@@ -1167,7 +1247,7 @@ async function generateGraphicHtml({ account, brand, title, content, kicker, log
     ? account.linkedInUrl.replace(/\/$/, '').split('/').pop() || account.name
     : account.name;
   const showFooter = account.type !== 'person';
-  return createHtmlAsset(title, content, brand.imageStyle || kicker || 'Featured', logoUrl, showFooter, account.name, accountHandle);
+  return createHtmlAsset(title, content, brand.imageStyle || kicker || 'Featured', logoUrl, showFooter, account.name, accountHandle, layoutArchetype);
 }
 
 async function generatePostContent({ account, brand, prompt }) {
@@ -1236,6 +1316,7 @@ async function createScheduledPostForTomorrow({ workspace, account, brand, targe
   const timeZone = brand.timezone || workspace.settings?.defaultTimezone || schedulerTimezone;
   const targetDay = getZonedParts(new Date(scheduledAt), timeZone);
   const strategyItem = (brand.weeklyStrategy || []).find(s => s.day === targetDay.weekdayName);
+  const layoutArchetype = normalizeLayoutArchetype(strategyItem?.layoutArchetype || getNextLayoutArchetypeForAccount(workspace, account.id));
 
   const prompt = buildGenerationPrompt({ account, brand, targetDate, targetTime, strategyItem });
   const { content, title } = await generatePostContent({ account, brand, prompt });
@@ -1254,6 +1335,7 @@ async function createScheduledPostForTomorrow({ workspace, account, brand, targe
     content,
     kicker,
     logoUrl: brand.logoUrl || workspace.settings.logoUrl,
+    layoutArchetype,
   });
   return {
     id: `post_${Date.now()}_${account.id}`,
@@ -1413,6 +1495,7 @@ function enrichStrategyWithSlots(strategy, slots, brand) {
       angle: item.angle || `Explain why ${fallbackTheme} matters to this audience.`,
       visualState: item.visualState || '',
       visualDirection: item.visualDirection || '',
+      layoutArchetype: normalizeLayoutArchetype(item.layoutArchetype || pickLayoutArchetype(index)),
       targetDate: slot.targetDate,
       targetTime: slot.targetTime,
       timezone: slot.timezone,
@@ -1780,6 +1863,7 @@ app.post(['/api/generate-post', '/linkedin/api/generate-post'], async (req, res)
 
   const postTheme = brand.contentThemes?.[0] || brand.contentPillars?.[0] || 'general';
   const kicker = postTheme.charAt(0).toUpperCase() + postTheme.slice(1);
+  const layoutArchetype = getNextLayoutArchetypeForAccount(workspace, accountId);
   const post = {
     id: `post_${Date.now()}`,
     accountId,
@@ -1795,6 +1879,7 @@ app.post(['/api/generate-post', '/linkedin/api/generate-post'], async (req, res)
       content: generated.content,
       kicker,
       logoUrl: brand.logoUrl || workspace.settings.logoUrl,
+      layoutArchetype,
     }),
     status: 'draft',
     scheduledAt: new Date().toISOString(),
@@ -2024,6 +2109,7 @@ async function pollPendingBatches() {
             logoUrl: brand.logoUrl || workspace.settings.logoUrl,
             visualState: strategyItem.visualState,
             visualDirection: strategyItem.visualDirection,
+            layoutArchetype: strategyItem.layoutArchetype,
           });
 
           graphicsRequests.push({
@@ -2079,6 +2165,7 @@ async function pollPendingBatches() {
               account?.type !== 'person',
               account?.name || '',
               accountHandle,
+              strategyItem.layoutArchetype,
             );
           }
 

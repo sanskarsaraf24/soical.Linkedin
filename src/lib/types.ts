@@ -40,6 +40,7 @@ export interface StrategyItem {
   angle: string;
   visualDirection: string;
   visualState?: string;
+  layoutArchetype?: 'A' | 'B' | 'C' | 'D';
   targetDate?: string;
   targetTime?: string;
   timezone?: string;

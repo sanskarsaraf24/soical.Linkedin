@@ -14,13 +14,29 @@ const minpayImageStyle = [
   'Avoid: navy/charcoal-heavy palettes not in the kit, emerald substitutes, purple/blue startup gradients, rounded pill-heavy UI, playful illustrations, fear-based debt imagery, stock-photo people, clutter, tiny text, and any promise of guaranteed settlement outcomes.'
 ].join(' ');
 
+const casemateImageStyle = [
+  'Casemate AI brand kit. Colors: Deep Navy #0F172A, Royal Blue #1D4ED8, Warm Off-White #F5F3EF, Slate Grey #334155, and Deep Emerald #065F46 only for success states.',
+  'Typography: Playfair Display for headlines, Inter for body, JetBrains Mono for citations or references. Keep the tone court-ready, precise, and disciplined.',
+  'Visual language: legal-tech, source-verified, structured, and institutional. Use squared layouts, thin borders, document-style panels, and calm whitespace.',
+  'Layout states to rotate: Citation Authority, Two-Column Brief, Vertical Authority, Grid Reference. Do not repeat the same framing every post.',
+  'Avoid: playful illustrations, startup gradients, rounded pill-heavy styling, stock imagery, neon accents, and generic AI branding.'
+].join(' ');
+
+const personalImageStyle = [
+  'Founder brand visual kit. Colors: Indigo #4F46E5, Off-White #F8F6F1, Charcoal #1F2937, Muted Grey #6B7280.',
+  'Typography: Manrope Bold for headlines, Inter for supporting text. Keep the voice crisp, practical, and reflective.',
+  'Visual language: editorial but restrained, with clear hierarchy, ample whitespace, subtle dividers, and no decorative clutter.',
+  'Layout states to rotate: Bold Left Headline, Magazine Spread, Quote Statement, Data Insight. Each post should feel distinct.',
+  'Avoid: gradients, noisy textures, rounded card-heavy design, and filler decoration.'
+].join(' ');
+
 function isoDaysFromNow(days: number): string {
   const date = new Date(now);
   date.setDate(date.getDate() + days);
   return date.toISOString();
 }
 
-function createHtmlAsset(title: string, content: string, colors: string[], style: string, logoUrl = ''): string {
+function createHtmlAsset(title: string, content: string, colors: string[], style: string, logoUrl = '', layoutArchetype = 'A'): string {
   const [primary = '#0f766e', secondary = '#e2e8f0'] = colors;
   return `<!doctype html>
 <html>
@@ -121,6 +137,14 @@ function isMinpayAccount(account: LinkedInAccount): boolean {
   return `${account.name} ${account.handle}`.toLowerCase().includes('minpay');
 }
 
+function isCasemateAccount(account: LinkedInAccount): boolean {
+  return `${account.name} ${account.handle}`.toLowerCase().includes('casemate');
+}
+
+function isFounderAccount(account: LinkedInAccount): boolean {
+  return `${account.name} ${account.handle}`.toLowerCase().includes('sanskar') || `${account.name} ${account.handle}`.toLowerCase().includes('founder');
+}
+
 function normalizeBrandImageStyleForAccount(account: LinkedInAccount, imageStyle?: string, fallbackStyle?: string): string {
   const style = imageStyle || fallbackStyle || '';
   const lower = style.toLowerCase();
@@ -135,6 +159,12 @@ function normalizeBrandImageStyleForAccount(account: LinkedInAccount, imageStyle
     )
   ) {
     return minpayImageStyle;
+  }
+  if (isCasemateAccount(account) && (!style || !lower.includes('#0f172a') || !lower.includes('#1d4ed8'))) {
+    return casemateImageStyle;
+  }
+  if (isFounderAccount(account) && !style) {
+    return personalImageStyle;
   }
   return style;
 }
@@ -202,7 +232,7 @@ export function createInitialWorkspace(): WorkspaceState {
       tone: 'educational',
       contentPillars: ['AI operators', 'builder lessons', 'product strategy'],
       hashtags: ['#AI', '#BuildInPublic', '#Founder'],
-      imageStyle: 'gradient',
+      imageStyle: personalImageStyle,
       writingStyle: 'Short hooks, clean paragraphs, useful takeaways',
       contentThemes: ['operator notes', 'shipping lessons', 'market observations'],
       ctaStyle: 'Ask for a thoughtful reply',
@@ -234,7 +264,7 @@ export function createInitialWorkspace(): WorkspaceState {
       tone: 'professional',
       contentPillars: ['structured legal drafting', 'source-strict research', 'case-centric workspace', 'hearing calendar and alerts', 'professional responsibility'],
       hashtags: ['#LegalAI', '#IndianLitigation', '#LegalTech'],
-      imageStyle: 'Primary colors: Deep Navy #0F172A, Muted Royal Blue #1D4ED8, Warm Off-White #F5F3EF. Accent: Slate Grey #334155, Deep Emerald #065F46 only for success states. Typography: Playfair Display for headings, Inter for body, JetBrains Mono for citations. Visual language: minimalist, high whitespace, subtle borders, flat document-style UI, thin divider lines, soft shadows, squared card corners, navy primary buttons with white text. Avoid neon accents, purple tones, startup-style gradients, stock imagery, playful visuals, and rounded pill-heavy styling.',
+      imageStyle: casemateImageStyle,
       writingStyle: 'Precise, legal, structured, and specific to Indian litigation workflows. Emphasize court-ready drafting, verified citations, confidentiality, advocate control, and refusal to fabricate sources.',
       contentThemes: ['court-ready drafting', 'verified Indian case law', 'matter organisation', 'generic AI limitations', 'advocate control', 'confidentiality', 'hearing discipline'],
       ctaStyle: 'Invite advocates to start a 14-day free trial or see how the workflow works.',
