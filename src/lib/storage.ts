@@ -5,6 +5,15 @@ export const canonicalLinkedInRedirectUri = 'https://social.minpay.in/linkedin/a
 
 const now = new Date();
 
+const minpayImageStyle = [
+  'MinPay Consultants LLP brand kit. Colors: Deep Teal #143D45 as the primary brand color, Mint Teal #47A48B as the accent/checkmark color, White #FFFFFF, Cool Light Gray #F4F6F8, and Charcoal Gray #4A4A4A for secondary text.',
+  'Typography: Montserrat Bold for headlines, labels, and key numbers; Roboto Regular for body/supporting text. Use clean, confident, professional spacing with no decorative gradients.',
+  'Visual language: calm debt-resolution and consultation brand, not a loan app and not generic SaaS. Use white or light-gray backgrounds, deep-teal panels, mint accents, clean dividers, document/checklist/process motifs, and subtle finance/legal-consultation cues.',
+  'Mood board direction: minimalist financial service posters, clean business-card style layouts, flat illustration only when useful, subtle office/document context, and strong trust signals through structure and restraint.',
+  'Layout states to rotate: Clean White, Light Gray, Deep Teal, Mint Accent. Keep the logo visible once, preferably top-left or bottom-right depending on contrast.',
+  'Avoid: navy/charcoal-heavy palettes not in the kit, emerald substitutes, purple/blue startup gradients, rounded pill-heavy UI, playful illustrations, fear-based debt imagery, stock-photo people, clutter, tiny text, and any promise of guaranteed settlement outcomes.'
+].join(' ');
+
 function isoDaysFromNow(days: number): string {
   const date = new Date(now);
   date.setDate(date.getDate() + days);
@@ -108,6 +117,28 @@ function escapeHtml(input: string): string {
     .replaceAll("'", '&#39;');
 }
 
+function isMinpayAccount(account: LinkedInAccount): boolean {
+  return `${account.name} ${account.handle}`.toLowerCase().includes('minpay');
+}
+
+function normalizeBrandImageStyleForAccount(account: LinkedInAccount, imageStyle?: string, fallbackStyle?: string): string {
+  const style = imageStyle || fallbackStyle || '';
+  const lower = style.toLowerCase();
+  if (
+    isMinpayAccount(account)
+    && (
+      !style
+      || !lower.includes('#143d45')
+      || lower.includes('navy')
+      || lower.includes('dark slate')
+      || lower.includes('emerald')
+    )
+  ) {
+    return minpayImageStyle;
+  }
+  return style;
+}
+
 export function createInitialWorkspace(): WorkspaceState {
   const settings: AppSettings = {
     linkedinClientId: '',
@@ -187,7 +218,7 @@ export function createInitialWorkspace(): WorkspaceState {
       tone: 'professional',
       contentPillars: ['debt resolution education', 'recovery call handling', 'legal settlement process', 'borrower expectations', 'qualification clarity'],
       hashtags: ['#DebtResolution', '#LoanSettlement', '#FinancialStress'],
-      imageStyle: 'Serious legal-financial visual language. Use deep muted tones such as navy, charcoal, or dark slate with controlled emerald accents. Keep layouts clean, structured, trustworthy, and calm with ample whitespace. Avoid playful, decorative, overly promotional, or loan-provider styling.',
+      imageStyle: minpayImageStyle,
       writingStyle: 'Short, clear, empathetic, and controlled. Explain the process at a high level, set realistic expectations, and avoid sounding sales-heavy. Never overpromise outcomes.',
       contentThemes: ['recovery pressure', 'credit card and personal loan dues', 'structured settlement support', 'lender communication', 'client qualification', 'documentation and process clarity'],
       ctaStyle: 'Invite users to check eligibility or speak with the team without promising results.',
@@ -307,6 +338,7 @@ export function normalizeWorkspace(input?: Partial<WorkspaceState> | null): Work
       ...(sourceBrand || {}),
       accountId: account.id,
       aboutCompany: sourceBrand?.aboutCompany || fallbackBrand.aboutCompany,
+      imageStyle: normalizeBrandImageStyleForAccount(account, sourceBrand?.imageStyle, fallbackBrand.imageStyle),
       contentPillars: sourceBrand?.contentPillars?.length ? sourceBrand.contentPillars : fallbackBrand.contentPillars,
       hashtags: sourceBrand?.hashtags?.length ? sourceBrand.hashtags : fallbackBrand.hashtags,
       contentThemes: sourceBrand?.contentThemes?.length ? sourceBrand.contentThemes : fallbackBrand.contentThemes,

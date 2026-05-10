@@ -14,6 +14,7 @@ function pick<T>(items: T[], index: number): T {
  */
 function deriveAccent(imageStyle: string): string {
   const style = (imageStyle || '').toLowerCase();
+  if (style.includes('minpay') || (style.includes('#143d45') && style.includes('#47a48b'))) return '#47A48B';
   // Support explicit hex colour values embedded in the style description
   const hexMatch = style.match(/#([0-9a-f]{3,6})\b/i);
   if (hexMatch) return hexMatch[0];
@@ -33,6 +34,7 @@ function deriveAccent(imageStyle: string): string {
 
 function deriveSurface(imageStyle: string): string {
   const style = (imageStyle || '').toLowerCase();
+  if (style.includes('minpay') || style.includes('#143d45')) return '#F4F6F8';
   if (style.includes('dark') || style.includes('night') || style.includes('noir')) return '#0f172a';
   if (style.includes('warm') || style.includes('cream') || style.includes('parchment')) return '#fdf8f0';
   if (style.includes('gradient')) return 'linear-gradient(160deg, #f8f6f4, #ffffff)';
@@ -67,10 +69,16 @@ function buildHtmlAsset(
     .find(Boolean)
     ?.slice(0, 120) || '';
 
+  const isMinpay = accent.toLowerCase() === '#47a48b' && surface.toLowerCase() === '#f4f6f8';
   const isDark = surface.includes('#0') || surface.includes('dark') || surface.includes('night');
-  const textPrimary = isDark ? '#f1f5f9' : '#0f172a';
-  const textSecondary = isDark ? '#94a3b8' : '#475569';
-  const cardBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)';
+  const textPrimary = isMinpay ? '#143D45' : isDark ? '#f1f5f9' : '#0f172a';
+  const textSecondary = isMinpay ? '#4A4A4A' : isDark ? '#94a3b8' : '#475569';
+  const cardBg = isMinpay ? '#FFFFFF' : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)';
+  const headingFont = isMinpay ? 'Montserrat' : 'Manrope';
+  const bodyFont = isMinpay ? 'Roboto' : 'Inter';
+  const fontHref = isMinpay
+    ? 'https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Roboto:wght@400;500&display=swap'
+    : 'https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap';
 
   return `<!doctype html>
 <html>
@@ -78,14 +86,14 @@ function buildHtmlAsset(
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="${fontHref}" rel="stylesheet">
     <style>
       html, body {
         margin: 0;
         width: 100%;
         height: 100%;
         background: ${surface};
-        font-family: 'Inter', sans-serif;
+        font-family: '${bodyFont}', sans-serif;
         -webkit-font-smoothing: antialiased;
       }
       .wrap {
@@ -115,7 +123,7 @@ function buildHtmlAsset(
         margin: 80px;
         flex: 1;
         background: ${cardBg};
-        border-radius: 48px;
+        border-radius: ${isMinpay ? '0' : '48px'};
         padding: 96px;
         display: flex;
         flex-direction: column;
@@ -128,22 +136,22 @@ function buildHtmlAsset(
         display: inline-block;
         background: ${accent};
         color: white;
-        font-family: 'Inter', sans-serif;
+        font-family: '${bodyFont}', sans-serif;
         font-size: 22px;
         font-weight: 600;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         padding: 12px 28px;
-        border-radius: 40px;
+        border-radius: ${isMinpay ? '0' : '40px'};
         margin-bottom: 64px;
         align-self: flex-start;
       }
       .headline {
-        font-family: 'Manrope', sans-serif;
+        font-family: '${headingFont}', sans-serif;
         font-size: 88px;
         line-height: 1.0;
-        letter-spacing: -0.03em;
-        font-weight: 800;
+        letter-spacing: 0;
+        font-weight: 700;
         color: ${textPrimary};
         margin: 0;
         max-width: 900px;
@@ -176,7 +184,7 @@ function buildHtmlAsset(
         gap: 6px;
       }
       .author-name {
-        font-family: 'Manrope', sans-serif;
+        font-family: '${headingFont}', sans-serif;
         font-size: 26px;
         font-weight: 700;
         color: ${textPrimary};

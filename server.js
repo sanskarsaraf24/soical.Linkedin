@@ -40,6 +40,15 @@ console.log('Anthropic Model Loaded:', anthropicModel);
 const groq = groqKey ? new Groq({ apiKey: groqKey }) : null;
 const anthropic = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
 
+const MINPAY_IMAGE_STYLE = [
+  'MinPay Consultants LLP brand kit. Colors: Deep Teal #143D45 as the primary brand color, Mint Teal #47A48B as the accent/checkmark color, White #FFFFFF, Cool Light Gray #F4F6F8, and Charcoal Gray #4A4A4A for secondary text.',
+  'Typography: Montserrat Bold for headlines, labels, and key numbers; Roboto Regular for body/supporting text. Use clean, confident, professional spacing with no decorative gradients.',
+  'Visual language: calm debt-resolution and consultation brand, not a loan app and not generic SaaS. Use white or light-gray backgrounds, deep-teal panels, mint accents, clean dividers, document/checklist/process motifs, and subtle finance/legal-consultation cues.',
+  'Mood board direction: minimalist financial service posters, clean business-card style layouts, flat illustration only when useful, subtle office/document context, and strong trust signals through structure and restraint.',
+  'Layout states to rotate: Clean White, Light Gray, Deep Teal, Mint Accent. Keep the logo visible once, preferably top-left or bottom-right depending on contrast.',
+  'Avoid: navy/charcoal-heavy palettes not in the kit, emerald substitutes, purple/blue startup gradients, rounded pill-heavy UI, playful illustrations, fear-based debt imagery, stock-photo people, clutter, tiny text, and any promise of guaranteed settlement outcomes.'
+].join(' ');
+
 function trimContext(text, maxLength = 600) {
   if (!text || text.length <= maxLength) return text;
   return text.substring(0, maxLength) + '...';
@@ -192,6 +201,16 @@ const NAMED_COLOR_PALETTES = [
 
 function deriveStylePalette(styleStr = '') {
   const lower = styleStr.toLowerCase();
+  if (lower.includes('minpay') || (lower.includes('#143d45') && lower.includes('#47a48b'))) {
+    return {
+      accent: '#47A48B',
+      bg: '#F4F6F8',
+      card: '#FFFFFF',
+      text: '#143D45',
+      textMuted: '#4A4A4A',
+      border: 'rgba(20,61,69,0.14)'
+    };
+  }
   const colorHint = lower.match(/#[0-9a-f]{3,6}/i)?.[0];
   if (colorHint) return { accent: colorHint, bg: '#f8f8f8', card: 'rgba(255,255,255,0.93)', text: '#0f172a', textMuted: '#64748b', border: 'rgba(0,0,0,0.04)' };
   for (const p of NAMED_COLOR_PALETTES) {
@@ -200,7 +219,70 @@ function deriveStylePalette(styleStr = '') {
   return { accent: '#4f46e5', bg: '#f5f4ff', card: 'rgba(255,255,255,0.92)', text: '#0f172a', textMuted: '#64748b', border: 'rgba(0,0,0,0.04)' };
 }
 
+function createMinpayHtmlAsset(title = 'LinkedIn post', content = '', kicker = 'Debt resolution', logoUrl = '', showFooter = false, accountName = '', accountHandle = '') {
+  const headline = String(title || 'LinkedIn post').replace(/[.!?]+$/g, '').slice(0, 72);
+  const subheadline = String(content || '')
+    .replace(/\s+/g, ' ')
+    .split(/[.!?\n]/)
+    .map(s => s.trim())
+    .filter(s => s.length > 20)
+    .find(Boolean)
+    ?.slice(0, 132) || '';
+  const displayAuthor = accountName || '';
+  const displayHandle = accountHandle ? `LinkedIn · ${accountHandle}` : '';
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    html,body{margin:0;width:100%;height:100%;background:#F4F6F8;font-family:'Roboto',Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+    .wrap{width:1080px;height:1080px;background:#F4F6F8;box-sizing:border-box;padding:76px;display:flex;position:relative;overflow:hidden;color:#143D45;}
+    .panel{width:100%;height:100%;background:#FFFFFF;border:1px solid rgba(20,61,69,0.14);box-sizing:border-box;padding:76px 78px;display:flex;flex-direction:column;justify-content:space-between;position:relative;}
+    .panel:before{content:"";position:absolute;right:0;top:0;width:220px;height:220px;background:#47A48B;opacity:.16;border-bottom-left-radius:110px;}
+    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:36px;position:relative;z-index:1;}
+    .kicker{font-family:'Montserrat',Arial,sans-serif;font-size:30px;line-height:1.2;letter-spacing:0;text-transform:uppercase;color:#143D45;border-left:10px solid #47A48B;padding-left:22px;max-width:620px;}
+    .logo{max-width:190px;max-height:82px;object-fit:contain;}
+    .main{position:relative;z-index:1;}
+    h1{font-family:'Montserrat',Arial,sans-serif;font-size:82px;line-height:1.04;letter-spacing:0;font-weight:700;color:#143D45;margin:0;max-width:850px;}
+    .rule{width:150px;height:8px;background:#47A48B;margin:42px 0 34px 0;}
+    .sub{font-size:35px;line-height:1.42;color:#4A4A4A;margin:0;max-width:830px;font-weight:400;}
+    .footer{display:flex;justify-content:space-between;align-items:flex-end;gap:28px;color:#4A4A4A;font-size:24px;position:relative;z-index:1;}
+    .author-name{font-family:'Montserrat',Arial,sans-serif;color:#143D45;font-size:26px;font-weight:700;}
+    .author-handle{font-size:21px;margin-top:6px;}
+    .check{width:74px;height:74px;border:8px solid #47A48B;border-top:0;border-left:0;transform:rotate(45deg);margin-right:20px;margin-bottom:10px;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <div class="top">
+        <div class="kicker" data-required="kicker">${escapeHtml(kicker || 'Debt resolution')}</div>
+        ${logoUrl ? `<img class="logo" src="${escapeHtml(logoUrl)}" alt="Logo" />` : ''}
+      </div>
+      <div class="main">
+        <h1 data-required="headline">${escapeHtml(headline)}</h1>
+        <div class="rule"></div>
+        ${subheadline ? `<p class="sub" data-required="subheadline">${escapeHtml(subheadline)}</p>` : '<p class="sub" data-required="subheadline"> </p>'}
+      </div>
+      <div class="footer">
+        ${showFooter && displayAuthor ? `<div><div class="author-name">${escapeHtml(displayAuthor)}</div>${displayHandle ? `<div class="author-handle">${escapeHtml(displayHandle)}</div>` : ''}</div>` : '<div></div>'}
+        <div class="check" aria-hidden="true"></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 function createHtmlAsset(title = 'LinkedIn post', content = '', style = 'Featured', logoUrl = '', showFooter = false, accountName = '', accountHandle = '') {
+  const styleText = String(style || '');
+  if (styleText.toLowerCase().includes('minpay') || styleText.toLowerCase().includes('#143d45')) {
+    return createMinpayHtmlAsset(title, content, 'Debt resolution', logoUrl, showFooter, accountName, accountHandle);
+  }
+
   const { accent, bg, card: cardBg, text, textMuted, border: borderColor } = deriveStylePalette(style);
 
   const headline = String(title || 'LinkedIn post').replace(/[.!?]+$/g, '').slice(0, 72);
@@ -293,10 +375,10 @@ body { padding: 100px; display: flex; flex-direction: column; justify-content: s
 
 /* TYPOGRAPHY SYSTEM - NO TEXT BELOW 32PX ALLOWED */
 h1 {
-  font-size: 100px !important;
-  line-height: 1.05 !important;
-  letter-spacing: -3px !important;
-  font-weight: 800 !important;
+  font-size: clamp(64px, 7vw, 92px) !important;
+  line-height: 1.06 !important;
+  letter-spacing: 0 !important;
+  font-weight: 700 !important;
   margin: 0 0 40px 0;
 }
 .supporting-text {
@@ -330,6 +412,8 @@ h1 {
 - No markdown, no fences.
 - All text MUST be 32px or larger.
 - Use the fonts specified in the brand guide. If none are specified, use Google Fonts: Playfair Display for headings and Inter for body.
+- Do not use decorative gradient backgrounds unless the brand guide explicitly asks for them.
+- Keep the design inside the 1080x1080 canvas with generous margins. Do not crop the logo or text.
 - Add data-required="headline" to the h1 and data-required="subheadline" to the supporting sentence.
 - Output only valid complete HTML/CSS from <!doctype html>.`;
 }
@@ -428,7 +512,7 @@ function createInitialWorkspace() {
         tone: 'professional',
         contentPillars: ['debt resolution education', 'recovery call handling', 'legal settlement process', 'borrower expectations', 'qualification clarity'],
         hashtags: ['#DebtResolution', '#LoanSettlement', '#FinancialStress'],
-        imageStyle: 'Serious legal-financial visual language. Use deep muted tones such as navy, charcoal, or dark slate with controlled emerald accents. Keep layouts clean, structured, trustworthy, and calm with ample whitespace. Avoid playful, decorative, overly promotional, or loan-provider styling.',
+        imageStyle: MINPAY_IMAGE_STYLE,
         writingStyle: 'Short, clear, empathetic, and controlled. Explain the process at a high level, set realistic expectations, and avoid sounding sales-heavy. Never overpromise outcomes.',
         contentThemes: ['recovery pressure', 'credit card and personal loan dues', 'structured settlement support', 'lender communication', 'client qualification', 'documentation and process clarity'],
         ctaStyle: 'Invite users to check eligibility or speak with the team without promising results.',
@@ -476,6 +560,28 @@ function createInitialWorkspace() {
   };
 }
 
+function isMinpayAccount(account = {}) {
+  return String(account.name || account.handle || '').toLowerCase().includes('minpay');
+}
+
+function normalizeBrandImageStyleForAccount(account, imageStyle, fallbackStyle) {
+  const style = imageStyle || fallbackStyle || '';
+  const lower = String(style).toLowerCase();
+  if (
+    isMinpayAccount(account)
+    && (
+      !style
+      || !lower.includes('#143d45')
+      || lower.includes('navy')
+      || lower.includes('dark slate')
+      || lower.includes('emerald')
+    )
+  ) {
+    return MINPAY_IMAGE_STYLE;
+  }
+  return style;
+}
+
 function normalizeWorkspace(workspace) {
   const fallback = createInitialWorkspace();
   const { _id, createdAt, updatedAt, ...rest } = workspace || {};
@@ -520,6 +626,7 @@ function normalizeWorkspace(workspace) {
       ...incomingBrand,
       accountId: account.id,
       aboutCompany: incomingBrand.aboutCompany || fallbackBrand.aboutCompany,
+      imageStyle: normalizeBrandImageStyleForAccount(account, incomingBrand.imageStyle, fallbackBrand.imageStyle),
       contentPillars: incomingBrand.contentPillars?.length ? incomingBrand.contentPillars : fallbackBrand.contentPillars,
       hashtags: incomingBrand.hashtags?.length ? incomingBrand.hashtags : fallbackBrand.hashtags,
       contentThemes: incomingBrand.contentThemes?.length ? incomingBrand.contentThemes : fallbackBrand.contentThemes,
