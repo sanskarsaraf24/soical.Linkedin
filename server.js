@@ -128,26 +128,25 @@ function getBrandPalette(accountName = '', visualState = '') {
   const name = accountName.toLowerCase();
   
   if (name.includes('casemate')) {
-    // Casemate: Navy, Brass, Cream, Royal, Slate
-    if (visualState === 'LIGHT') {
-      return { bg: '#FDFCF7', accent: '#C5A059', text: '#0F172A', secondary: '#1D4ED8', detail: '#94A3B8' };
+    // Casemate: Navy (#0F172A), Brass (#C5A059), Cream (#FDFCF7), Royal (#1D4ED8), Slate (#94A3B8)
+    if (visualState === 'DARK') {
+      return { bg: '#0F172A', accent: '#C5A059', text: '#FDFCF7', secondary: '#1D4ED8', detail: '#94A3B8' };
     }
-    return { bg: '#0F172A', accent: '#C5A059', text: '#FDFCF7', secondary: '#1D4ED8', detail: '#94A3B8' };
+    return { bg: '#FDFCF7', accent: '#0F172A', text: '#0F172A', secondary: '#C5A059', detail: '#94A3B8' };
   }
   
   if (name.includes('minpay')) {
-    // MinPay: Teal, Mint, White, Trust Blue, Cool Gray
+    // MinPay: Deep Sea (#143D45), Mint (#47A48B), White (#FFFFFF), Trust Blue (#3B82F6), Cool Gray (#F4F6F8)
     if (visualState === 'DARK') {
       return { bg: '#143D45', accent: '#47A48B', text: '#FFFFFF', secondary: '#3B82F6', detail: '#F4F6F8' };
     }
-    return { bg: '#FFFFFF', accent: '#47A48B', text: '#143D45', secondary: '#3B82F6', detail: '#F4F6F8' };
+    return { bg: '#FFFFFF', accent: '#143D45', text: '#143D45', secondary: '#47A48B', detail: '#F4F6F8' };
   }
   
   if (name.includes('sanskar') || name.includes('founder') || name.includes('saraf')) {
-    // Saraf & Co: Burgundy, Gold, Ivory, Charcoal, Slate
-    // Derived from https://sanskarsaraf.in
+    // Saraf & Co: Burgundy (#4B1E2F), Gold (#C9A24D), Ivory (#F5F1EA), Charcoal (#1F1F1F), Slate (#6B6B6B)
     if (visualState === 'DARK') {
-      return { bg: '#4B1E2F', accent: '#C9A24D', text: '#F5F1EA', secondary: '#F5F1EA', detail: '#1F1F1F' };
+      return { bg: '#1F1F1F', accent: '#4B1E2F', text: '#F5F1EA', secondary: '#C9A24D', detail: '#6B6B6B' };
     }
     return { bg: '#F5F1EA', accent: '#4B1E2F', text: '#1F1F1F', secondary: '#C9A24D', detail: '#6B6B6B' };
   }
