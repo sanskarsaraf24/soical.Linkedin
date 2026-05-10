@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AppPage, BrandProfile, LinkedInAccount, PostDraft, SchedulerStatus, WorkspaceState } from './lib/types';
 import { loadWorkspace, normalizeWorkspace, saveWorkspace } from './lib/storage';
-import { fetchSchedulerStatus, fetchWorkspace, generatePostRemote, generateTomorrowPosts, publishPostNow, saveWorkspaceRemote, uploadLogo, generateWeeklyStrategy, batchWeeklyContent } from './lib/api';
+import { fetchSchedulerStatus, fetchWorkspace, generatePostRemote, generateTomorrowPosts, publishPostNow, saveWorkspaceRemote, uploadLogo, generateWeeklyStrategy, batchWeeklyContent, refreshDesign, uploadImageOverride } from './lib/api';
 
 const pages: { id: AppPage; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -38,6 +38,8 @@ export default function App() {
   } | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<{ id: string; message: string }[]>([]);
+  const [isRefreshingDesign, setIsRefreshingDesign] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const notify = (message: string) => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -235,6 +237,38 @@ export default function App() {
   function connectLinkedInAccount(accountId: string) {
     const base = window.location.pathname.startsWith('/linkedin') ? '/linkedin/api' : '/api';
     window.location.href = `${base}/auth/linkedin/start?accountId=${encodeURIComponent(accountId)}`;
+  }
+
+  async function handleRefreshDesign(postId: string) {
+    setIsRefreshingDesign(true);
+    try {
+      const updatedPost = await refreshDesign(postId);
+      setWorkspace(current => ({
+        ...current,
+        posts: current.posts.map(p => p.id === postId ? updatedPost : p)
+      }));
+      notify('Design refreshed with new archetype.');
+    } catch (err) {
+      notify('Failed to refresh design.');
+    } finally {
+      setIsRefreshingDesign(false);
+    }
+  }
+
+  async function handleImageOverride(postId: string, file: File) {
+    setIsUploadingImage(true);
+    try {
+      const updatedPost = await uploadImageOverride(postId, file);
+      setWorkspace(current => ({
+        ...current,
+        posts: current.posts.map(p => p.id === postId ? updatedPost : p)
+      }));
+      notify('Manual image uploaded.');
+    } catch (err) {
+      notify('Failed to upload image.');
+    } finally {
+      setIsUploadingImage(false);
+    }
   }
 
   function confirmSelectedAction() {
@@ -681,7 +715,11 @@ export default function App() {
             </header>
             <div className="preview-grid">
               <div className="preview-frame">
-                <iframe srcDoc={previewPost.htmlAsset} title={`${previewPost.title} preview`} />
+                {previewPost.imageOverrideUrl ? (
+                  <img src={previewPost.imageOverrideUrl} alt="Manual override" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+                ) : (
+                  <iframe srcDoc={previewPost.htmlAsset} title={`${previewPost.title} preview`} />
+                )}
               </div>
               <div className="stack">
                 <MetaRow label="Account" value={workspace.accounts.find(account => account.id === previewPost.accountId)?.name || 'Unknown'} />
@@ -691,7 +729,19 @@ export default function App() {
                 {previewPost.cta && <MetaRow label="CTA" value={previewPost.cta} />}
                 <MetaRow label="Hashtags" value={previewPost.hashtags?.join(' ') || 'None'} />
                 {previewPost.lastError && <div className="error-box">{previewPost.lastError}</div>}
-                <button className="btn btn-primary" onClick={() => exportHtml(previewPost)}>Export HTML</button>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
+                  <button className="btn btn-primary" onClick={() => exportHtml(previewPost)} style={{ flex: 1 }}>Export HTML</button>
+                  <button className="btn btn-secondary" onClick={() => handleRefreshDesign(previewPost.id)} disabled={isRefreshingDesign} style={{ flex: 1 }}>
+                    {isRefreshingDesign ? 'Refreshing...' : 'Refresh Design'}
+                  </button>
+                  <label className="btn btn-secondary" style={{ flex: 1, cursor: 'pointer', textAlign: 'center' }}>
+                    {isUploadingImage ? 'Uploading...' : 'Replace Image'}
+                    <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) handleImageOverride(previewPost.id, file);
+                    }} />
+                  </label>
+                </div>
               </div>
             </div>
           </div>

@@ -75,3 +75,17 @@ export async function batchWeeklyContent(accountId: string): Promise<any> {
     body: JSON.stringify({ accountId }),
   });
 }
+export async function refreshDesign(postId: string): Promise<any> {
+  return requestJSON<any>(`/posts/${encodeURIComponent(postId)}/refresh-design`, {
+    method: 'POST',
+  });
+}
+
+export async function uploadImageOverride(postId: string, file: File): Promise<any> {
+  const formData = new FormData();
+  formData.append('image', file);
+  return requestJSON<any>(`/posts/${encodeURIComponent(postId)}/image-override`, {
+    method: 'POST',
+    body: formData,
+  });
+}

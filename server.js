@@ -12,6 +12,18 @@ import cron from 'node-cron';
 import fetch from 'node-fetch';
 import { renderHtmlToPng } from './rendering.js';
 
+// Storage for Manual Overrides
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/manual/');
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage: storage });
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -110,27 +122,50 @@ function getNextLayoutArchetypeForAccount(workspace, accountId, offset = 0) {
   return layout;
 }
 
-function getNextVisualStateForAccount(workspace, account, brand, offset = 0) {
-  const accountId = account.id;
-  const recentPosts = (workspace.posts || [])
-    .filter(p => p.accountId === accountId && p.status !== 'failed')
-    .sort((a, b) => new Date(b.scheduledAt || 0).getTime() - new Date(a.scheduledAt || 0).getTime())
-    .slice(0, 1);
+function getBrandPalette(accountName = '', visualState = '') {
+  const name = accountName.toLowerCase();
   
-  const lastState = recentPosts[0]?.visualState;
-  const name = String(account.name || account.handle || '').toLowerCase();
+  if (name.includes('casemate')) {
+    if (visualState === 'WARM OFF-WHITE') {
+      return { bg: '#F5F3EF', accent: '#1D4ED8', text: '#334155', surface: '#FFFFFF' };
+    }
+    return { bg: '#0F172A', accent: '#1D4ED8', text: '#FFFFFF', surface: '#1E293B' };
+  }
   
-  let states = ['A', 'B'];
-  if (name.includes('casemate')) states = ['DEEP NAVY', 'WARM OFF-WHITE', 'ROYAL BLUE'];
-  else if (name.includes('minpay')) states = ['WHITE', 'TEAL', 'LIGHT GRAY'];
-  else if (name.includes('sanskar') || name.includes('founder')) states = ['OFF-WHITE', 'INDIGO ACCENT'];
-
-  let currentIndex = states.indexOf(lastState);
-  if (currentIndex === -1) currentIndex = (workspace.posts || []).filter(p => p.accountId === accountId).length + offset;
+  if (name.includes('minpay')) {
+    if (visualState === 'TEAL') {
+      return { bg: '#143D45', accent: '#47A48B', text: '#FFFFFF', surface: '#1A4D57' };
+    }
+    return { bg: '#FFFFFF', accent: '#47A48B', text: '#143D45', surface: '#F8FAFC' };
+  }
   
-  const nextIndex = (currentIndex + 1) % states.length;
-  return states[nextIndex];
+  if (name.includes('sanskar') || name.includes('founder') || name.includes('saraf')) {
+    if (visualState === 'INDIGO ACCENT') {
+      return { bg: '#4F46E5', accent: '#FFFFFF', text: '#FFFFFF', surface: '#6366F1' };
+    }
+    return { bg: '#F8F6F1', accent: '#4F46E5', text: '#1F2937', surface: '#FFFFFF' };
+  }
+  
+  return { bg: '#FFFFFF', accent: '#3B82F6', text: '#1F2937', surface: '#F3F4F6' };
 }
+
+async function generateGraphicSummary(postContent) {
+  if (!anthropic) return postContent.slice(0, 150);
+  
+  try {
+    const response = await anthropic.messages.create({
+      model: anthropicModel,
+      max_tokens: 100,
+      system: `You are a minimalist copywriter. Summarize the following LinkedIn post into a single, punchy insight of 15-30 words. Focus on the 'Why' or the 'Result'. Do not use emojis.`,
+      messages: [{ role: 'user', content: postContent }]
+    });
+    return response.content?.[0]?.text || postContent.slice(0, 150);
+  } catch (err) {
+    console.error('Summary error:', err);
+    return postContent.slice(0, 150);
+  }
+}
+
 
 function isCasemateAccount(account = {}) {
   return String(account.name || account.handle || '').toLowerCase().includes('casemate');
@@ -1307,19 +1342,34 @@ function hasVisiblePosterText(html = '') {
 
 async function generateGraphicHtml({ account, brand, title, content, kicker, logoUrl, layoutArchetype = 'A' }) {
   const visualState = brand.visualState || 'A';
+  const palette = getBrandPalette(account.name, visualState);
+  const visualSummary = await generateGraphicSummary(content);
+
   if (anthropic) {
     try {
       const response = await anthropic.messages.create({
         model: anthropicModel,
         max_tokens: 2400,
-        system: `You are a senior brand designer who creates complete, self-contained HTML/CSS social graphics. The brand guide in the user prompt is the source of truth for colors, typography, layout, and visual tone. Do not impose a generic SaaS style when the guide specifies another direction. The poster must load correctly in a browser with no external dependencies except Google Fonts.`,
+        system: `You are a senior brand designer who creates complete, self-contained HTML/CSS social graphics.
+The CANVAS is 1080x1080px edge-to-edge.
+You MUST use these EXACT colors:
+- Background: ${palette.bg}
+- Accent: ${palette.accent}
+- Primary Text: ${palette.text}
+- Surface/Card: ${palette.surface}
+
+CONSTRAINTS:
+- Use layout archetype: ${layoutArchetype}
+- NO ROUNDED CORNERS: border-radius: 0 always.
+- MINIMAL CONTENT: Use the provided summary, not the full post.
+- NO OVERLAP: Ensure text is always visible and high contrast.`,
         messages: [{
           role: 'user',
           content: buildGraphicPrompt({
             account,
             brand,
             title,
-            content,
+            content: visualSummary,
             kicker,
             logoUrl,
             visualState,
@@ -1328,7 +1378,7 @@ async function generateGraphicHtml({ account, brand, title, content, kicker, log
         }],
       });
       let html = normalizeGraphicHtml(response.content?.[0]?.text || '');
-      html = applyLogoContrastCorrection(html, account, visualState);
+      html = applyLogoContrastCorrection(html, account, visualState, title);
       
       if ((html.includes('<html') || html.includes('<!doctype html')) && hasVisiblePosterText(html)) {
         return html;
@@ -1337,13 +1387,10 @@ async function generateGraphicHtml({ account, brand, title, content, kicker, log
       console.error('Graphic generation error:', err);
     }
   }
-
-  const accountHandle = account.linkedInUrl
-    ? account.linkedInUrl.replace(/\/$/, '').split('/').pop() || account.name
-    : account.name;
-  const showFooter = account.type !== 'person';
-  return createHtmlAsset(title, content, brand.imageStyle || kicker || 'Featured', logoUrl, showFooter, account.name, accountHandle, layoutArchetype);
+  // Fallback
+  return createHtmlAsset(title, visualSummary, brand.imageStyle || kicker || 'Featured', logoUrl, account.type !== 'person', account.name, '', layoutArchetype);
 }
+
 
 async function generatePostContent({ account, brand, prompt }) {
   let content = '';
@@ -1929,23 +1976,50 @@ app.post(['/api/settings/logo', '/linkedin/api/settings/logo'], upload.single('l
   res.json({ url: logoUrl, name: req.file.originalname });
 });
 
-app.post(['/api/posts/:postId/publish-now', '/linkedin/api/posts/:postId/publish-now'], async (req, res) => {
+app.post(['/api/posts/:postId/refresh-design', '/linkedin/api/posts/:postId/refresh-design'], async (req, res) => {
   const workspace = await loadWorkspace();
-  const post = workspace.posts.find(item => item.id === req.params.postId);
-  if (!post) {
-    res.status(404).json({ error: 'Post not found' });
-    return;
-  }
-  try {
-    await publishPost(workspace, req.params.postId);
-  } catch (err) {
-    post.status = 'failed';
-    post.retryCount = (post.retryCount || 0) + 1;
-    post.lastError = err instanceof Error ? err.message : 'Publish failed.';
-  }
-  const saved = await saveWorkspace(workspace);
-  res.json(sanitizeWorkspaceForClient(saved));
+  const postIndex = workspace.posts.findIndex(p => p.id === req.params.postId);
+  if (postIndex === -1) return res.status(404).json({ error: 'Post not found' });
+  
+  const post = workspace.posts[postIndex];
+  const account = workspace.accounts.find(a => a.id === post.accountId);
+  const brand = workspace.brandProfiles.find(b => b.accountId === post.accountId);
+  
+  const offset = Math.floor(Math.random() * 10); // Randomize layout for refresh
+  const layoutArchetype = getNextLayoutArchetypeForAccount(workspace, post.accountId, offset);
+  const visualState = getNextVisualStateForAccount(workspace, account, brand, offset);
+  
+  post.layoutArchetype = layoutArchetype;
+  post.visualState = visualState;
+  post.htmlAsset = await generateGraphicHtml({
+    account,
+    brand: { ...brand, visualState },
+    title: post.title,
+    content: post.content,
+    kicker: post.theme || 'Insight',
+    logoUrl: brand.logoUrl || workspace.settings.logoUrl,
+    layoutArchetype,
+  });
+  
+  await saveWorkspace(workspace);
+  res.json(post);
 });
+
+app.post(['/api/posts/:postId/image-override', '/linkedin/api/posts/:postId/image-override'], upload.single('image'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+  
+  const workspace = await loadWorkspace();
+  const post = workspace.posts.find(p => p.id === req.params.postId);
+  if (!post) return res.status(404).json({ error: 'Post not found' });
+  
+  const relativePath = `/uploads/manual/${req.file.filename}`;
+  post.imageOverrideUrl = relativePath;
+  post.imageUrl = relativePath; // Direct replacement
+  
+  await saveWorkspace(workspace);
+  res.json(post);
+});
+
 
 app.post(['/api/generate-post', '/linkedin/api/generate-post'], async (req, res) => {
   const { accountId, prompt } = req.body;
