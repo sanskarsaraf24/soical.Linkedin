@@ -969,14 +969,28 @@ async function publishPost(workspace, postId) {
   post.retryCount = post.retryCount || 0;
   await saveWorkspace(workspace);
 
-  const filename = `${post.id}.png`;
-  const imagePath = await renderHtmlToPng(absolutizeHtmlAssets(post.htmlAsset), filename);
-  const imageUrl = `${basePath}/uploads/posts/${filename}`;
+  let imagePath;
+  let finalImageUrl;
+
+  if (post.imageOverrideUrl) {
+    // Use manual override if it exists
+    // The override URL is relative (e.g., /uploads/manual/...)
+    imagePath = path.join(__dirname, post.imageOverrideUrl);
+    finalImageUrl = post.imageOverrideUrl;
+    console.log(`[PUBLISH] Using manual image override: ${imagePath}`);
+  } else {
+    // Default: render from HTML
+    const filename = `${post.id}.png`;
+    imagePath = await renderHtmlToPng(absolutizeHtmlAssets(post.htmlAsset), filename);
+    finalImageUrl = `${basePath}/uploads/posts/${filename}`;
+    console.log(`[PUBLISH] Rendered HTML to PNG: ${imagePath}`);
+  }
+
   const imageUrn = await uploadLinkedInImage({ accessToken, authorUrn, imagePath });
   const linkedinPostUrn = await createLinkedInPost({ accessToken, authorUrn, post, imageUrn });
 
   post.status = 'posted';
-  post.imageUrl = imageUrl;
+  post.imageUrl = finalImageUrl;
   post.linkedinPostUrn = linkedinPostUrn;
   post.publishedAt = new Date().toISOString();
   post.postedAt = post.publishedAt;
