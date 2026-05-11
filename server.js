@@ -33,6 +33,10 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = Number(process.env.PORT || 3000);
 const basePath = process.env.APP_BASE_PATH || '/linkedin';
+const blogServiceUrl = process.env.BLOG_SERVICE_URL || `http://127.0.0.1:${process.env.BLOG_SERVICE_PORT || 3300}`;
+const blogDistDir = process.env.BLOG_DIST_DIR || path.resolve(__dirname, '../blog-automation/frontend/dist');
+const blogUploadRoot = process.env.BLOG_UPLOAD_ROOT || path.resolve(__dirname, '../blog-automation/uploads');
+const salesDistDir = process.env.SALES_DIST_DIR || '/home/social.minpay.in/public_html/sales';
 const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017';
 const dbName = process.env.MONGODB_DB || 'linkedin_ai';
 const groqKey = process.env.GROQ_API_KEY;
@@ -65,6 +69,67 @@ console.log('Anthropic Model Loaded:', anthropicModel);
 
 const groq = groqKey ? new Groq({ apiKey: groqKey }) : null;
 const anthropic = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
+
+function buildProxyHeaders(req) {
+  const headers = { ...req.headers };
+  delete headers.host;
+  delete headers.connection;
+  delete headers['content-length'];
+  headers['x-forwarded-host'] = req.headers.host || '';
+  headers['x-forwarded-proto'] = req.protocol;
+  return headers;
+}
+
+async function proxyBlogRequest(req, res) {
+  const target = new URL(req.originalUrl, blogServiceUrl);
+  const method = req.method.toUpperCase();
+  const headers = buildProxyHeaders(req);
+  let body;
+
+  if (!['GET', 'HEAD'].includes(method)) {
+    if (req.is('application/json') && req.body && Object.keys(req.body).length) {
+      body = JSON.stringify(req.body);
+      headers['content-type'] = 'application/json';
+    } else if (req.is('application/x-www-form-urlencoded') && req.body && Object.keys(req.body).length) {
+      body = new URLSearchParams(req.body).toString();
+      headers['content-type'] = 'application/x-www-form-urlencoded';
+    } else {
+      body = req;
+    }
+  }
+
+  try {
+    const upstream = await fetch(target, { method, headers, body });
+    res.status(upstream.status);
+    upstream.headers.forEach((value, key) => {
+      if (!['connection', 'content-encoding', 'content-length', 'transfer-encoding'].includes(key.toLowerCase())) {
+        res.setHeader(key, value);
+      }
+    });
+    upstream.body.pipe(res);
+  } catch (err) {
+    console.error('[Blog Proxy] Upstream error:', err.message);
+    res.status(502).send(`Blog service is not reachable at ${blogServiceUrl}. Start blog-automation on port 3300.`);
+  }
+}
+
+function sendBlogIndex(_req, res, next) {
+  const indexPath = path.join(blogDistDir, 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    next();
+    return;
+  }
+  res.sendFile(indexPath);
+}
+
+function sendSalesIndex(_req, res, next) {
+  const indexPath = path.join(salesDistDir, 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    next();
+    return;
+  }
+  res.sendFile(indexPath);
+}
 
 const MINPAY_IMAGE_STYLE = [
   'MinPay Consultants LLP brand kit. Colors: Deep Teal #143D45 as the primary brand color, Mint Teal #47A48B as the accent/checkmark color, White #FFFFFF, Cool Light Gray #F4F6F8, and Charcoal Gray #4A4A4A for secondary text.',
@@ -2202,6 +2267,17 @@ app.use('/uploads/posts', express.static(path.join(uploadRoot, 'posts')));
 app.use(`${basePath}/uploads`, express.static(uploadRoot));
 app.use('/uploads', express.static(uploadRoot));
 app.use(`${basePath}`, express.static(path.join(__dirname, 'dist')));
+
+app.use('/blog/api', proxyBlogRequest);
+app.use('/blog/uploads', express.static(blogUploadRoot));
+app.use('/blog/uploads', proxyBlogRequest);
+app.use('/blog', express.static(blogDistDir));
+app.get('/blog/*', sendBlogIndex, proxyBlogRequest);
+app.get('/blog', sendBlogIndex, proxyBlogRequest);
+
+app.use('/sales', express.static(salesDistDir));
+app.get('/sales/*', sendSalesIndex);
+app.get('/sales', sendSalesIndex);
 
 app.get(`${basePath}/*`, async (req, res) => {
   const distDir = path.join(__dirname, 'dist');
