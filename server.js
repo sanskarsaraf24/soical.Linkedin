@@ -1978,6 +1978,19 @@ app.post(['/api/posts/:postId/image-override', '/linkedin/api/posts/:postId/imag
   res.json(post);
 });
 
+app.post(['/api/posts/:postId/publish-now', '/linkedin/api/posts/:postId/publish-now'], async (req, res) => {
+  const workspace = await loadWorkspace();
+  const { postId } = req.params;
+  try {
+    await publishPost(workspace, postId);
+    await saveWorkspace(workspace);
+    res.json(workspace);
+  } catch (err) {
+    console.error(`Manual publish failed for ${postId}:`, err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Publish failed.' });
+  }
+});
+
 
 app.post(['/api/generate-post', '/linkedin/api/generate-post'], async (req, res) => {
   const { accountId, prompt } = req.body;
